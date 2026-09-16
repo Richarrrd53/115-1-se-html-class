@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { lessons, stages, type Lesson } from './lessons'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { lessons, stages, type Lesson } from './courseStore'
 
-const selectedLessonId = ref(localStorage.getItem('selected-lesson') || lessons[0].id)
+const selectedLessonId = ref(localStorage.getItem('selected-lesson') || (lessons.value[0]?.id || '1-1'))
 const showAnswer = ref(false)
 const activePanel = ref<'html' | 'css' | 'js'>('html')
 const savedProgress = JSON.parse(localStorage.getItem('completed-levels') || '{}') as Record<string, boolean | boolean[]>
@@ -10,18 +10,30 @@ const completedLessons = ref<Record<string, boolean>>(
   Object.fromEntries(Object.entries(savedProgress).map(([id, value]) => [id, Array.isArray(value) ? value.some(Boolean) : value])),
 )
 
-const lesson = computed<Lesson>(() => lessons.find((item) => item.id === selectedLessonId.value) || lessons[0])
-const practice = computed(() => lesson.value.practice)
+const lesson = computed<Lesson>(() => lessons.value.find((item) => item.id === selectedLessonId.value) || lessons.value[0])
+const practice = computed(() => lesson.value?.practice || { instructions: '', starterCode: { html: '', css: '', js: '' }, checklist: [], answer: { html: '', css: '', js: '' } })
 const code = ref({ ...practice.value.starterCode })
-const isCurrentComplete = computed(() => completedLessons.value[lesson.value.id] || false)
+const isCurrentComplete = computed(() => (lesson.value ? completedLessons.value[lesson.value.id] || false : false))
 const completedCount = computed(() => Object.values(completedLessons.value).filter(Boolean).length)
-const progress = computed(() => Math.round((completedCount.value / lessons.length) * 100))
+const progress = computed(() => (lessons.value.length ? Math.round((completedCount.value / lessons.value.length) * 100) : 0))
 
 watch(selectedLessonId, () => {
   showAnswer.value = false
-  code.value = { ...lesson.value.practice.starterCode }
+  if (lesson.value?.practice) {
+    code.value = { ...lesson.value.practice.starterCode }
+  }
   localStorage.setItem('selected-lesson', selectedLessonId.value)
 })
+
+watch(
+  () => lesson.value?.practice?.starterCode,
+  (newStarter) => {
+    if (newStarter) {
+      code.value = { ...newStarter }
+    }
+  },
+  { deep: true },
+)
 
 watch(completedLessons, (value) => localStorage.setItem('completed-levels', JSON.stringify(value)), { deep: true })
 
@@ -29,13 +41,51 @@ function chooseLesson(id: string) {
   selectedLessonId.value = id
 }
 
+function goToNextLesson() {
+  const currentIndex = lessons.value.findIndex((item) => item.id === lesson.value?.id)
+  if (currentIndex !== -1 && currentIndex < lessons.value.length - 1) {
+    chooseLesson(lessons.value[currentIndex + 1].id)
+  }
+}
+
+const isLastLesson = computed(() => {
+  if (!lesson.value || !lessons.value.length) return true
+  return lesson.value.id === lessons.value[lessons.value.length - 1].id
+})
+
+
 function resetCode() {
-  code.value = { ...practice.value.starterCode }
+  if (practice.value) {
+    code.value = { ...practice.value.starterCode }
+  }
 }
 
 function toggleComplete() {
-  completedLessons.value = { ...completedLessons.value, [lesson.value.id]: !isCurrentComplete.value }
+  if (lesson.value) {
+    completedLessons.value = { ...completedLessons.value, [lesson.value.id]: !isCurrentComplete.value }
+  }
 }
+
+function handleWindowMessage(event: MessageEvent) {
+  if (event.data?.type === 'SELECT_LESSON' && event.data.id) {
+    if (lessons.value.some((item) => item.id === event.data.id)) {
+      selectedLessonId.value = event.data.id
+    }
+  }
+}
+
+onMounted(() => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const queryLesson = urlParams.get('lesson')
+  if (queryLesson && lessons.value.some((item) => item.id === queryLesson)) {
+    selectedLessonId.value = queryLesson
+  }
+  window.addEventListener('message', handleWindowMessage)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('message', handleWindowMessage)
+})
 
 const previewDocument = computed(() => `<!doctype html>
 <html lang="zh-Hant">
@@ -45,7 +95,7 @@ const previewDocument = computed(() => `<!doctype html>
 </script>
 
 <template>
-  <div class="app-shell">
+  <div v-if="lesson" class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">&lt;/&gt;</div>
@@ -57,6 +107,7 @@ const previewDocument = computed(() => `<!doctype html>
         <b>{{ progress }}%</b>
       </div>
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">⌂ 回到總覽</button>
+      <a href="/edit.html" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
     </header>
 
     <div class="workspace">
@@ -144,7 +195,7 @@ const previewDocument = computed(() => `<!doctype html>
 
         <div class="navigation">
           <span></span>
-          <button class="next-button" @click="chooseLesson(lessons[lessons.findIndex((item) => item.id === lesson.id) + 1]?.id || lesson.id)" :disabled="lesson.id === lessons[lessons.length - 1].id">下一個主題 <span>→</span></button>
+          <button class="next-button" @click="goToNextLesson" :disabled="isLastLesson">下一個主題 <span>→</span></button>
         </div>
       </main>
     </div>

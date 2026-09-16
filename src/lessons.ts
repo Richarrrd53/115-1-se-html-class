@@ -1,5 +1,6 @@
 export type Code = { html: string; css: string; js: string }
 export type Concept = { name: string; description: string }
+export type Stage = { id: number; title: string }
 export type Lesson = {
   id: string; number: number; stage: number; type: string; title: string; objective: string
   introduction: string; concepts: Concept[]
@@ -7,10 +8,11 @@ export type Lesson = {
   practice: { instructions: string; starterCode: Code; checklist: string[]; answer: Code }
 }
 
-export const stages = [
+export const stages: Stage[] = [
   { id: 1, title: '階段一 · HTML 基礎' }, { id: 2, title: '階段二 · CSS 基礎' },
   { id: 3, title: '階段三 · CSS 視覺效果' }, { id: 4, title: '階段四 · 排版與動態' }, { id: 5, title: '階段五 · JavaScript' },
 ]
+
 
 const code = (html: string, css = '', js = ''): Code => ({ html, css, js })
 const introductions: Record<number, { text: string; concepts: Concept[] }> = {
@@ -167,3 +169,7 @@ export const lessons: Lesson[] = topics.map((topic) => {
     },
   }
 })
+
+export const defaultStages: Stage[] = stages
+export const defaultLessons: Lesson[] = lessons
+
