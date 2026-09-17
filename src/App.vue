@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { lessons, stages, type Lesson } from './courseStore'
 import { fetchPracticeStudents, recordPractice } from './api'
 
+const baseUrl = import.meta.env.BASE_URL
 const selectedLessonId = ref(localStorage.getItem('selected-lesson') || (lessons.value[0]?.id || '1-1'))
 const showAnswer = ref(false)
 const activePanel = ref<'html' | 'css' | 'js'>('html')
@@ -144,7 +145,7 @@ const previewDocument = computed(() => `<!doctype html>
         <small v-if="practiceSyncError" class="error">API 未連線</small>
       </div>
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">⌂ 回到總覽</button>
-      <a href="/edit.html" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
+      <a :href="`${baseUrl}edit.html`" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
     </header>
 
     <div class="workspace">
