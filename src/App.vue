@@ -183,8 +183,8 @@ const previewDocument = computed(() => `<!doctype html>
         <b>{{ progress }}%</b>
       </div>
       <div class="practice-presence">
-        <input v-model="studentId" placeholder="學號" maxlength="40" />
-        <input v-model="studentName" placeholder="你的姓名" maxlength="80" />
+        <input id="student-id" v-model="studentId" placeholder="學號" maxlength="40" />
+        <input id="student-name" v-model="studentName" placeholder="你的姓名" maxlength="80" />
         <span>{{ practiceStudents.length }} 位同學練習中</span>
         <small v-if="practiceSyncError" class="error">API 未連線</small>
       </div>
@@ -265,9 +265,9 @@ const previewDocument = computed(() => `<!doctype html>
           <div class="challenge-actions">
             <button class="answer-button" @click="showAnswer = !showAnswer">{{ showAnswer ? '隱藏參考答案' : '查看參考答案' }} <span>⌄</span></button>
             <button class="complete-button" :class="{ completed: isCurrentComplete }" @click="toggleComplete">{{ isCurrentComplete ? '已完成 ✓' : '標記為完成' }}</button>
-            <button class="complete-button" :disabled="isSubmitting" @click="submitPractice">{{ isSubmitting ? '送出中...' : '送出練習' }}</button>
+            <button id="btn-submit-practice" class="complete-button" :disabled="isSubmitting" type="button" @click="submitPractice">{{ isSubmitting ? '送出中...' : '送出練習' }}</button>
           </div>
-          <p v-if="submissionMessage" class="submission-message">{{ submissionMessage }}</p>
+          <p v-if="submissionMessage" class="submission-message" role="status" aria-live="polite">{{ submissionMessage }}</p>
           <div v-if="showAnswer" class="answer-box">
             <strong>參考答案</strong>
             <div v-for="panel in [{ name: 'HTML', code: practice.answer.html }, { name: 'CSS', code: practice.answer.css }, { name: 'JavaScript', code: practice.answer.js }]" :key="panel.name" class="answer-section">
