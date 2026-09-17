@@ -11,7 +11,7 @@ WebCraft 是一個以 **Vite + Vue 3 + TypeScript** 建立的前端互動學習�
 - **Vite**：提供快速的開發伺服器與生產環境打包流程。
 - **互動課程**：依 HTML、CSS、視覺效果、排版動態與 JavaScript 分階段學習。
 - **即時預覽**：在練習區編輯 HTML、CSS、JavaScript 後，即時查看結果。
-- **進度記錄**：使用瀏覽器 `localStorage` 保存目前單元與完成狀態。
+- **進度記錄**：使用瀏覽器 `localStorage` 保存個人狀態，並可透過 PostgreSQL API 記錄練習同學。
 
 ## 目錄結構與模組說明
 
@@ -86,6 +86,16 @@ npm --version
 ```bash
 npm install
 ```
+
+### 啟用 PostgreSQL 練習紀錄
+
+先建立資料庫並執行 `db/schema.sql`，再設定連線字串：
+
+```powershell
+$env:DATABASE_URL = "postgres://使用者:密碼@localhost:5432/webcraft"
+```
+
+開啟兩個終端機，分別執行 `npm run server` 與 `npm run dev`。學生在首頁輸入姓名後，開啟單元或標記完成時會寫入 PostgreSQL；同一單元的練習名單會顯示在頁首。未啟動 API 時，原本的 `localStorage` 個人進度仍可使用，但不會同步到資料庫。
 
 ### 啟動本地開發伺服器
 

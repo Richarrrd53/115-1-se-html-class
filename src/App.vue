@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { lessons, stages, type Lesson } from './courseStore'
+import { fetchPracticeStudents, recordPractice } from './api'
 
 const selectedLessonId = ref(localStorage.getItem('selected-lesson') || (lessons.value[0]?.id || '1-1'))
 const showAnswer = ref(false)
@@ -9,6 +10,9 @@ const savedProgress = JSON.parse(localStorage.getItem('completed-levels') || '{}
 const completedLessons = ref<Record<string, boolean>>(
   Object.fromEntries(Object.entries(savedProgress).map(([id, value]) => [id, Array.isArray(value) ? value.some(Boolean) : value])),
 )
+const studentName = ref(localStorage.getItem('webcraft-student-name') || '')
+const practiceStudents = ref<string[]>([])
+const practiceSyncError = ref(false)
 
 const lesson = computed<Lesson>(() => lessons.value.find((item) => item.id === selectedLessonId.value) || lessons.value[0])
 const practice = computed(() => lesson.value?.practice || { instructions: '', starterCode: { html: '', css: '', js: '' }, checklist: [], answer: { html: '', css: '', js: '' } })
@@ -23,6 +27,8 @@ watch(selectedLessonId, () => {
     code.value = { ...lesson.value.practice.starterCode }
   }
   localStorage.setItem('selected-lesson', selectedLessonId.value)
+  refreshPracticeStudents()
+  if (studentName.value) syncPractice()
 })
 
 watch(
@@ -62,7 +68,31 @@ function resetCode() {
 
 function toggleComplete() {
   if (lesson.value) {
-    completedLessons.value = { ...completedLessons.value, [lesson.value.id]: !isCurrentComplete.value }
+    const completed = !isCurrentComplete.value
+    completedLessons.value = { ...completedLessons.value, [lesson.value.id]: completed }
+    syncPractice(completed)
+  }
+}
+
+async function syncPractice(completed = false) {
+  if (!studentName.value.trim() || !lesson.value) return
+  localStorage.setItem('webcraft-student-name', studentName.value.trim())
+  try {
+    await recordPractice(studentName.value.trim(), lesson.value.id, completed)
+    practiceSyncError.value = false
+    practiceStudents.value = await fetchPracticeStudents(lesson.value.id).then((students) => students.map((student) => student.name))
+  } catch {
+    practiceSyncError.value = true
+  }
+}
+
+async function refreshPracticeStudents() {
+  if (!lesson.value) return
+  try {
+    practiceStudents.value = await fetchPracticeStudents(lesson.value.id).then((students) => students.map((student) => student.name))
+    practiceSyncError.value = false
+  } catch {
+    practiceSyncError.value = true
   }
 }
 
@@ -81,6 +111,8 @@ onMounted(() => {
     selectedLessonId.value = queryLesson
   }
   window.addEventListener('message', handleWindowMessage)
+  if (studentName.value) syncPractice()
+  refreshPracticeStudents()
 })
 
 onUnmounted(() => {
@@ -105,6 +137,11 @@ const previewDocument = computed(() => `<!doctype html>
         <span>學習進度</span>
         <div class="progress-track"><i :style="{ width: `${progress}%` }"></i></div>
         <b>{{ progress }}%</b>
+      </div>
+      <div class="practice-presence">
+        <input v-model="studentName" placeholder="你的姓名" maxlength="80" @change="syncPractice()" />
+        <span>{{ practiceStudents.length }} 位同學練習中</span>
+        <small v-if="practiceSyncError" class="error">API 未連線</small>
       </div>
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">⌂ 回到總覽</button>
       <a href="/edit.html" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
