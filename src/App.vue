@@ -13,6 +13,8 @@ const completedLessons = ref<Record<string, boolean>>(
 )
 const studentId = ref(localStorage.getItem('webcraft-student-id') || '')
 const studentName = ref(localStorage.getItem('webcraft-student-name') || '')
+const showStudentProfileModal = ref(!studentId.value.trim() || !studentName.value.trim())
+const studentProfileError = ref('')
 const practiceStudents = ref<string[]>([])
 const practiceSyncError = ref(false)
 const submissionMessage = ref('')
@@ -67,6 +69,23 @@ function resetCode() {
   if (practice.value) {
     code.value = { ...practice.value.starterCode }
   }
+}
+
+function confirmStudentProfile() {
+  const trimmedStudentId = studentId.value.trim()
+  const trimmedStudentName = studentName.value.trim()
+  if (!trimmedStudentId || !trimmedStudentName) {
+    studentProfileError.value = '請輸入學號與姓名後再開始練習。'
+    return
+  }
+
+  studentId.value = trimmedStudentId
+  studentName.value = trimmedStudentName
+  localStorage.setItem('webcraft-student-id', trimmedStudentId)
+  localStorage.setItem('webcraft-student-name', trimmedStudentName)
+  localStorage.setItem('webcraft-student-profile-completed', 'true')
+  studentProfileError.value = ''
+  showStudentProfileModal.value = false
 }
 
 function toggleComplete() {
@@ -172,6 +191,27 @@ const previewDocument = computed(() => `<!doctype html>
 
 <template>
   <div v-if="lesson" class="app-shell">
+    <div v-if="showStudentProfileModal" class="modal-overlay student-profile-overlay">
+      <form class="modal-box student-profile-modal" @submit.prevent="confirmStudentProfile">
+        <div class="modal-header">
+          <div>
+            <span class="section-kicker">開始學習</span>
+            <h3>請先留下你的學習資料</h3>
+          </div>
+        </div>
+        <div class="modal-body student-profile-body">
+          <p>填寫一次即可開始練習，之後系統會用這些資料記錄你的作業。</p>
+          <label for="student-id">學號</label>
+          <input id="student-id" v-model="studentId" required maxlength="40" autocomplete="username" placeholder="例如：114213213" />
+          <label for="student-name">姓名</label>
+          <input id="student-name" v-model="studentName" required maxlength="80" autocomplete="name" placeholder="例如：王小明" />
+          <p v-if="studentProfileError" class="student-profile-error" role="alert">{{ studentProfileError }}</p>
+        </div>
+        <div class="modal-footer student-profile-footer">
+          <button class="complete-button" type="submit">開始練習</button>
+        </div>
+      </form>
+    </div>
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">&lt;/&gt;</div>
@@ -183,8 +223,8 @@ const previewDocument = computed(() => `<!doctype html>
         <b>{{ progress }}%</b>
       </div>
       <div class="practice-presence">
-        <input id="student-id" v-model="studentId" placeholder="學號" maxlength="40" />
-        <input id="student-name" v-model="studentName" placeholder="你的姓名" maxlength="80" />
+        <input v-model="studentId" placeholder="學號" maxlength="40" />
+        <input v-model="studentName" placeholder="你的姓名" maxlength="80" />
         <span>{{ practiceStudents.length }} 位同學練習中</span>
         <small v-if="practiceSyncError" class="error">API 未連線</small>
       </div>

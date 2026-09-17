@@ -654,6 +654,15 @@ textarea { display: block; resize: none; width: 100%; height: 270px; border: 0; 
   gap: 10px;
   background: #fbfcfe;
 }
+.student-profile-overlay { z-index: 200; }
+.student-profile-modal { max-width: 440px; }
+.student-profile-body { display: flex; flex-direction: column; gap: 8px; }
+.student-profile-body p { color: #6f7a90; font-size: 13px; line-height: 1.7; margin: 0 0 8px; }
+.student-profile-body label { color: #46536c; font-size: 13px; font-weight: 700; margin-top: 5px; }
+.student-profile-body input { width: 100%; border: 1px solid #d8deeb; border-radius: 7px; padding: 10px 11px; color: #172033; font-size: 14px; outline: 0; }
+.student-profile-body input:focus { border-color: #5268e6; box-shadow: 0 0 0 3px #5268e61f; }
+.student-profile-error { color: #d86868 !important; margin: 4px 0 0 !important; }
+.student-profile-footer { justify-content: flex-end; }
 
 /* 階段管理彈窗內部 */
 .add-stage-form {
