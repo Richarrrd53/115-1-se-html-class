@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
+
 import {
   stages,
   lessons,
@@ -11,13 +12,307 @@ import {
   addLesson,
   deleteLesson,
   resetToDefault,
-  exportJson,
-  importJson,
+  importLessonsTs,
   generateLessonsTsCode,
   saveCourseData,
 } from './courseStore'
+import { isEditorAuthenticated, verifyEditorPassword, setEditorAuthenticated } from './auth'
+import { COURSE_MEMBERS } from './courseMembers'
+import { supabase } from './supabase'
 
 const baseUrl = import.meta.env.BASE_URL
+
+// 權限驗證狀態
+const isAuthenticated = ref(isEditorAuthenticated())
+const inputPassword = ref('')
+const authError = ref('')
+const isVerifying = ref(false)
+
+async function handleLogin() {
+  if (!inputPassword.value) {
+    authError.value = '請輸入管理密碼！'
+    return
+  }
+  isVerifying.value = true
+  authError.value = ''
+  try {
+    const res = await verifyEditorPassword(inputPassword.value)
+    if (res.success) {
+      isAuthenticated.value = true
+      inputPassword.value = ''
+      loadStudentsData()
+    } else {
+      authError.value = res.message
+    }
+  } catch (err: any) {
+    authError.value = err?.message || '驗證失敗'
+  } finally {
+    isVerifying.value = false
+  }
+}
+
+onMounted(() => {
+  if (isAuthenticated.value) {
+    loadStudentsData()
+  }
+})
+
+function handleLock() {
+  setEditorAuthenticated(false)
+  isAuthenticated.value = false
+  inputPassword.value = ''
+  authError.value = ''
+}
+
+// ==================== 管理員模式分頁與學生成績管理 ====================
+export interface StudentAdminRecord {
+  studentId: string
+  name: string
+  email?: string
+  group?: string
+  lastSeenAt: string | null
+  onlineDurationMinutes: number
+  scores: Record<string, number>
+  completedLessons: Record<string, boolean>
+  completedCount: number
+  averageScore: number
+  submissionsCount: number
+  isDirty?: boolean
+}
+
+const currentViewMode = ref<'lessons' | 'grades'>('lessons')
+const studentsList = ref<StudentAdminRecord[]>([])
+const isLoadingStudents = ref(false)
+const studentSearchKeyword = ref('')
+const selectedDetailStudent = ref<StudentAdminRecord | null>(null)
+const saveSuccessMessage = ref('')
+const isSavingAll = ref(false)
+
+function switchViewToGrades() {
+  currentViewMode.value = 'grades'
+  if (studentsList.value.length === 0) {
+    loadStudentsData()
+  }
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '尚未上線'
+  try {
+    const d = new Date(iso)
+    return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  } catch {
+    return iso
+  }
+}
+
+const filteredStudents = computed(() => {
+  const kw = studentSearchKeyword.value.trim().toLowerCase()
+  if (!kw) return studentsList.value
+  return studentsList.value.filter(
+    (s) =>
+      s.studentId.toLowerCase().includes(kw) ||
+      s.name.toLowerCase().includes(kw) ||
+      (s.group && s.group.toLowerCase().includes(kw)),
+  )
+})
+
+const activeStudentsCount = computed(() => {
+  return studentsList.value.filter((s) => s.lastSeenAt || s.onlineDurationMinutes > 0).length
+})
+
+const overallAverageScore = computed(() => {
+  const scored = studentsList.value.filter((s) => s.averageScore > 0)
+  if (!scored.length) return 0
+  const total = scored.reduce((sum, s) => sum + s.averageScore, 0)
+  return Math.round(total / scored.length)
+})
+
+async function loadStudentsData() {
+  isLoadingStudents.value = true
+  try {
+    const res = await fetch('/api/admin/students')
+    if (res.ok) {
+      const data = await res.json()
+      studentsList.value = data.map((s: any) => ({
+        ...s,
+        scores: s.scores || {},
+        completedLessons: s.completedLessons || {},
+        isDirty: false,
+      }))
+    } else {
+      await loadStudentsFallback()
+    }
+  } catch {
+    await loadStudentsFallback()
+  } finally {
+    isLoadingStudents.value = false
+  }
+}
+
+async function loadStudentsFallback() {
+  // 從 Supabase 與本地 COURSE_MEMBERS 合併
+  const memberMap = new Map<string, StudentAdminRecord>()
+  for (const m of COURSE_MEMBERS) {
+    memberMap.set(m.studentId.toLowerCase(), {
+      studentId: m.studentId,
+      name: m.name,
+      email: m.email || '',
+      group: m.group || '',
+      lastSeenAt: null,
+      onlineDurationMinutes: 0,
+      scores: {},
+      completedLessons: {},
+      completedCount: 0,
+      averageScore: 0,
+      submissionsCount: 0,
+      isDirty: false,
+    })
+  }
+
+  try {
+    const { data: subs } = await supabase.from('practice_submissions').select('*')
+    if (subs) {
+      for (const sub of subs) {
+        const normId = (sub.student_id || '').toLowerCase()
+        let st = memberMap.get(normId)
+        if (!st) {
+          st = {
+            studentId: sub.student_id,
+            name: sub.student_name,
+            email: '',
+            group: '',
+            lastSeenAt: null,
+            onlineDurationMinutes: 0,
+            scores: {},
+            completedLessons: {},
+            completedCount: 0,
+            averageScore: 0,
+            submissionsCount: 0,
+            isDirty: false,
+          }
+          memberMap.set(normId, st)
+        }
+        st.submissionsCount++
+        if (typeof sub.score === 'number' && sub.score > 0) {
+          st.scores[sub.lesson_id] = Math.max(st.scores[sub.lesson_id] || 0, sub.score)
+        }
+        if (sub.completed) {
+          st.completedLessons[sub.lesson_id] = true
+        }
+        if (sub.online_duration_minutes) {
+          st.onlineDurationMinutes = Math.max(st.onlineDurationMinutes, sub.online_duration_minutes)
+        }
+        if (!st.lastSeenAt || new Date(sub.created_at) > new Date(st.lastSeenAt)) {
+          st.lastSeenAt = sub.created_at
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('載入 Supabase 紀錄略過：', err)
+  }
+
+  studentsList.value = Array.from(memberMap.values()).map((st) => {
+    st.completedCount = Object.values(st.completedLessons).filter(Boolean).length
+    const scoreVals = Object.values(st.scores) as number[]
+    st.averageScore = scoreVals.length
+      ? Math.round(scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length)
+      : 0
+    return st
+  })
+}
+
+async function saveStudent(student: StudentAdminRecord) {
+  const scoreVals = Object.values(student.scores) as number[]
+  student.averageScore = scoreVals.length
+    ? Math.round(scoreVals.reduce((a, b) => a + b, 0) / scoreVals.length)
+    : 0
+  student.completedCount = Object.values(student.completedLessons).filter(Boolean).length
+
+  try {
+    await fetch('/api/admin/students', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(student),
+    })
+  } catch {}
+
+  try {
+    await supabase.from('course_members').update({ name: student.name }).eq('student_id', student.studentId)
+    for (const [lessonId, score] of Object.entries(student.scores)) {
+      await supabase.from('practice_submissions').insert({
+        student_id: student.studentId,
+        student_name: student.name,
+        lesson_id: lessonId,
+        code: '{}',
+        completed: student.completedLessons[lessonId] || score >= 80,
+        score: score,
+        online_duration_minutes: student.onlineDurationMinutes,
+      })
+    }
+  } catch (err) {
+    console.warn('Supabase 更新略過：', err)
+  }
+
+  student.isDirty = false
+  saveSuccessMessage.value = `已成功儲存學生【${student.name} (${student.studentId})】的成績與資料！`
+  setTimeout(() => {
+    saveSuccessMessage.value = ''
+  }, 4000)
+}
+
+async function saveAllDirtyStudents() {
+  const dirtyList = studentsList.value.filter((s) => s.isDirty)
+  if (dirtyList.length === 0) {
+    alert('目前沒有已修改的學生資料。')
+    return
+  }
+  isSavingAll.value = true
+  for (const st of dirtyList) {
+    await saveStudent(st)
+  }
+  isSavingAll.value = false
+  saveSuccessMessage.value = `已成功儲存全部 ${dirtyList.length} 位學生的修改紀錄！`
+}
+
+function openStudentDetail(student: StudentAdminRecord) {
+  selectedDetailStudent.value = student
+}
+
+function closeStudentDetail() {
+  if (selectedDetailStudent.value?.isDirty) {
+    saveStudent(selectedDetailStudent.value)
+  }
+  selectedDetailStudent.value = null
+}
+
+function exportStudentsCsv() {
+  const headers = ['學號', '姓名', '最近上線時間', '累積上線時長(分鐘)', '已完成單元數', '平均成績']
+  const lessonIds = lessons.value.map((l) => l.id)
+  lessonIds.forEach((id) => headers.push(`單元${id}成績`))
+
+  const rows = studentsList.value.map((st) => {
+    const row = [
+      `"${st.studentId}"`,
+      `"${st.name}"`,
+      `"${st.lastSeenAt ? new Date(st.lastSeenAt).toLocaleString() : '未上線'}"`,
+      st.onlineDurationMinutes,
+      st.completedCount,
+      st.averageScore,
+    ]
+    lessonIds.forEach((id) => row.push(st.scores[id] ?? 0))
+    return row.join(',')
+  })
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `WebCraft_學生修課成績單_${new Date().toISOString().slice(0, 10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 
 // 當前選取的單元 ID
 const selectedLessonId = ref<string>(lessons.value[0]?.id || '')
@@ -200,18 +495,7 @@ function downloadLessonsTs() {
   URL.revokeObjectURL(url)
 }
 
-function handleExportJson() {
-  const jsonStr = exportJson()
-  const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `webcraft-lessons-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function handleImportJson(event: Event) {
+function handleImportTs(event: Event) {
   const input = event.target as HTMLInputElement
   if (!input.files || input.files.length === 0) return
   const file = input.files[0]
@@ -219,19 +503,21 @@ function handleImportJson(event: Event) {
   reader.onload = (e) => {
     const text = e.target?.result as string
     if (text) {
-      if (importJson(text)) {
-        alert('匯入成功！已套用新教材設定。')
+      const res = importLessonsTs(text)
+      if (res.success) {
+        alert(res.message)
         if (lessons.value.length > 0) {
           selectedLessonId.value = lessons.value[0].id
         }
       } else {
-        alert('匯入失敗，請確認 JSON 檔案格式是否正確。')
+        alert(res.message)
       }
     }
   }
   reader.readAsText(file)
   input.value = ''
 }
+
 
 function handleResetDefault() {
   if (confirm('確定要還原成專案的預設教材內容嗎？此操作將覆蓋目前的編輯內容！')) {
@@ -246,38 +532,109 @@ function handleResetDefault() {
 
 <template>
   <div class="editor-app-shell">
+    <!-- 密碼驗證鎖定對話框 -->
+    <div v-if="!isAuthenticated" class="modal-overlay auth-lock-overlay">
+      <div class="modal-box auth-lock-box">
+        <div class="modal-header">
+          <div class="auth-title">
+            <span class="lock-icon">🔐</span>
+            <h3>教材編輯器身分驗證</h3>
+          </div>
+        </div>
+        <form class="modal-body auth-lock-body" @submit.prevent="handleLogin">
+          <p class="auth-desc">本頁面提供課程內容管理與編輯功能，請輸入管理密碼以解鎖操作。</p>
+          <div class="form-field">
+            <label for="admin-pass">編輯權限密碼</label>
+            <input
+              id="admin-pass"
+              v-model="inputPassword"
+              type="password"
+              class="input-control"
+              placeholder="請輸入密碼..."
+              autocomplete="current-password"
+              autofocus
+            />
+          </div>
+          <p v-if="authError" class="auth-error-msg" role="alert">{{ authError }}</p>
+          <div class="auth-actions">
+            <button class="btn btn-primary btn-block" type="submit" :disabled="isVerifying">
+              {{ isVerifying ? '驗證中...' : '🔓 解鎖編輯功能' }}
+            </button>
+            <a :href="baseUrl" class="btn btn-outline btn-block text-center">返回學習頁面</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- 頂部工具導航列 -->
     <header class="editor-header">
       <div class="editor-brand">
         <div class="brand-mark">&lt;/&gt;</div>
         <div>
-          <strong>WebCraft 教材編輯器</strong>
-          <span>視覺化管理與即時雙向預覽</span>
+          <strong>WebCraft 管理員模式</strong>
+          <span>教材編輯與學生成績／上線管理</span>
         </div>
       </div>
 
+      <!-- 管理員模式視圖切換標籤 -->
+      <div class="admin-mode-tabs">
+        <button
+          type="button"
+          class="mode-tab-btn"
+          :class="{ active: currentViewMode === 'lessons' }"
+          @click="currentViewMode = 'lessons'"
+        >
+          📚 教材內容編輯
+        </button>
+        <button
+          type="button"
+          class="mode-tab-btn"
+          :class="{ active: currentViewMode === 'grades' }"
+          @click="switchViewToGrades"
+        >
+          👥 學生練習成績與上線管理
+        </button>
+      </div>
+
       <div class="editor-header-actions">
-        <button class="btn btn-outline" @click="showStageModal = true">
-          🗂️ 階段管理 ({{ stages.length }})
-        </button>
-        <button class="btn btn-primary" @click="handleAddLesson">
-          ➕ 新增單元
-        </button>
+        <template v-if="currentViewMode === 'lessons'">
+          <button class="btn btn-outline" @click="showStageModal = true">
+            🗂️ 階段管理 ({{ stages.length }})
+          </button>
+          <button class="btn btn-primary" @click="handleAddLesson">
+            ➕ 新增單元
+          </button>
+
+          <div class="divider"></div>
+
+          <button class="btn btn-secondary" @click="openExportModal">
+            💾 匯出 lessons.ts
+          </button>
+          <label class="btn btn-outline file-label" title="選擇本機 lessons.ts 檔案進行匯入">
+            📥 匯入 lessons.ts
+            <input type="file" accept=".ts,.js" style="display: none" @change="handleImportTs" />
+          </label>
+          <button class="btn btn-danger-outline" @click="handleResetDefault">
+            ↺ 還原預設
+          </button>
+        </template>
+
+        <template v-else-if="currentViewMode === 'grades'">
+          <button class="btn btn-primary" :disabled="isSavingAll" @click="saveAllDirtyStudents">
+            💾 儲存修改 ({{ studentsList.filter(s => s.isDirty).length }})
+          </button>
+          <button class="btn btn-secondary" @click="exportStudentsCsv">
+            📥 匯出成績 CSV
+          </button>
+          <button class="btn btn-outline" :disabled="isLoadingStudents" @click="loadStudentsData">
+            🔄 {{ isLoadingStudents ? '載入中...' : '重新整理' }}
+          </button>
+        </template>
 
         <div class="divider"></div>
 
-        <button class="btn btn-secondary" @click="openExportModal">
-          💾 匯出 lessons.ts
-        </button>
-        <button class="btn btn-outline" @click="handleExportJson">
-          📤 匯出 JSON
-        </button>
-        <label class="btn btn-outline file-label">
-          📥 匯入 JSON
-          <input type="file" accept=".json" style="display: none" @change="handleImportJson" />
-        </label>
-        <button class="btn btn-danger-outline" @click="handleResetDefault">
-          ↺ 還原預設
+        <button class="btn btn-outline" title="鎖定編輯器" @click="handleLock">
+          🔒 鎖定
         </button>
 
         <a :href="baseUrl" target="_blank" class="btn btn-link">
@@ -286,8 +643,8 @@ function handleResetDefault() {
       </div>
     </header>
 
-    <!-- 主工作區：雙欄分割 -->
-    <div class="editor-split-body">
+    <!-- 主工作區：教材編輯雙欄分割 -->
+    <div v-if="currentViewMode === 'lessons'" class="editor-split-body">
       <!-- 左欄：單元導覽 + 編輯表單 -->
       <section class="editor-left-pane">
         <!-- 單元快捷導航欄 -->
@@ -378,7 +735,7 @@ function handleResetDefault() {
             </div>
 
             <div class="form-field">
-              <label>學習目標 (objective)</label>
+              <label>學習目標 (objective) <span class="md-hint">✨ 支援 Markdown</span></label>
               <textarea
                 v-model="currentLesson.objective"
                 rows="2"
@@ -398,7 +755,7 @@ function handleResetDefault() {
             </div>
 
             <div class="form-field">
-              <label>觀念引言 (introduction)</label>
+              <label>觀念引言 (introduction) <span class="md-hint">✨ 支援 Markdown（如 **粗體**、`代碼`、- 清單）</span></label>
               <textarea
                 v-model="currentLesson.introduction"
                 rows="3"
@@ -409,7 +766,7 @@ function handleResetDefault() {
 
             <div class="concepts-section">
               <div class="sub-header">
-                <label>關鍵概念卡片 (concepts: name / description)</label>
+                <label>關鍵概念卡片 (concepts: name / description) <span class="md-hint">✨ 說明支援 Markdown</span></label>
                 <button class="btn-text-sm" @click="addConcept">
                   ➕ 新增概念
                 </button>
@@ -462,7 +819,7 @@ function handleResetDefault() {
                 />
               </div>
               <div class="form-field">
-                <label>範例說明 (example.description)</label>
+                <label>範例說明 (example.description) <span class="md-hint">✨ 支援 Markdown</span></label>
                 <input
                   v-model="currentLesson.example.description"
                   placeholder="範例說明"
@@ -502,7 +859,7 @@ function handleResetDefault() {
             </div>
 
             <div class="form-field">
-              <label>實作任務指示 (challengeInstructions / practice.instructions)</label>
+              <label>實作任務指示 (challengeInstructions) <span class="md-hint">✨ 支援 Markdown（如 **目標**、`語法`、1. 步驟）</span></label>
               <textarea
                 v-model="currentLesson.practice.instructions"
                 rows="2"
@@ -514,11 +871,12 @@ function handleResetDefault() {
             <!-- 自我檢查清單 -->
             <div class="checklist-section">
               <div class="sub-header">
-                <label>自我檢查清單 (checklist)</label>
+                <label>自我檢查清單 (checklist) <span class="md-hint">✨ 支援 Markdown</span></label>
                 <button class="btn-text-sm" @click="addChecklistItem">
                   ➕ 新增檢查項
                 </button>
               </div>
+
 
               <div class="checklist-items">
                 <div
@@ -699,6 +1057,211 @@ function handleResetDefault() {
           ></iframe>
         </div>
       </section>
+    </div>
+
+    <!-- 主工作區：學生成績與上線狀況管理視圖 -->
+    <div v-else-if="currentViewMode === 'grades'" class="admin-grades-container">
+      <div class="grades-subbar">
+        <div class="grades-metrics">
+          <div class="metric-card">
+            <span class="metric-label">修課學生總數</span>
+            <strong class="metric-value">{{ studentsList.length }} 人</strong>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">已上線練習人數</span>
+            <strong class="metric-value">{{ activeStudentsCount }} 人</strong>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">全班平均成績</span>
+            <strong class="metric-value text-green">{{ overallAverageScore }} 分</strong>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">課程總單元數</span>
+            <strong class="metric-value">{{ lessons.length }} 單元</strong>
+          </div>
+        </div>
+
+        <div class="grades-filter-bar">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input
+              v-model="studentSearchKeyword"
+              placeholder="搜尋學生姓名或學號..."
+              class="input-control"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- 儲存成功提示通知 -->
+      <transition name="fade">
+        <div v-if="saveSuccessMessage" class="grades-save-alert" role="status">
+          ✨ {{ saveSuccessMessage }}
+        </div>
+      </transition>
+
+      <!-- 學生名單與成績數據表格 -->
+      <div class="grades-table-wrapper">
+        <div v-if="isLoadingStudents" class="grades-loading-state">
+          <span>⏳ 正在載入學生名單與資料庫成績...</span>
+        </div>
+        <table v-else class="grades-data-table">
+          <thead>
+            <tr>
+              <th style="width: 120px">學號</th>
+              <th style="width: 140px">姓名 (可修改)</th>
+              <th style="width: 160px">最近上線時間</th>
+              <th style="width: 140px">上線時長</th>
+              <th style="width: 120px">完成進度</th>
+              <th style="width: 110px">平均分數</th>
+              <th>各單元得分 (可直接修改)</th>
+              <th style="width: 140px">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="st in filteredStudents"
+              :key="st.studentId"
+              :class="{ 'row-dirty': st.isDirty }"
+            >
+              <td>
+                <span class="student-id-code">{{ st.studentId }}</span>
+              </td>
+              <td>
+                <input
+                  v-model="st.name"
+                  class="input-control table-input"
+                  placeholder="姓名"
+                  @input="st.isDirty = true"
+                />
+              </td>
+              <td>
+                <span class="last-seen-tag" :class="{ 'is-active': st.lastSeenAt }">
+                  {{ formatDate(st.lastSeenAt) }}
+                </span>
+              </td>
+              <td>
+                <div class="duration-input-wrapper">
+                  <input
+                    type="number"
+                    min="0"
+                    v-model.number="st.onlineDurationMinutes"
+                    class="input-control table-input duration-input"
+                    @input="st.isDirty = true"
+                  />
+                  <span>分</span>
+                </div>
+              </td>
+              <td>
+                <span class="progress-badge">
+                  {{ st.completedCount }} / {{ lessons.length }}
+                </span>
+              </td>
+              <td>
+                <strong class="score-text" :class="{ 'score-high': st.averageScore >= 80, 'score-low': st.averageScore < 60 && st.averageScore > 0 }">
+                  {{ st.averageScore > 0 ? `${st.averageScore} 分` : '—' }}
+                </strong>
+              </td>
+              <td>
+                <!-- 橫向滑動展示各單元成績輸入框 -->
+                <div class="unit-scores-scroll">
+                  <div
+                    v-for="l in lessons"
+                    :key="l.id"
+                    class="unit-score-item"
+                    :title="`${l.title} (單元 ${l.number})`"
+                  >
+                    <span class="unit-label">{{ l.number }}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      placeholder="—"
+                      v-model.number="st.scores[l.id]"
+                      class="unit-score-input"
+                      @input="st.isDirty = true"
+                    />
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="table-actions">
+                  <button
+                    class="btn btn-sm btn-primary"
+                    :disabled="!st.isDirty"
+                    @click="saveStudent(st)"
+                  >
+                    💾 儲存
+                  </button>
+                  <button
+                    class="btn btn-sm btn-outline"
+                    @click="openStudentDetail(st)"
+                    title="查看該學生詳細作答與各題評分"
+                  >
+                    📝 細項
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 學生詳細單元評分與作答抽屜/彈窗 -->
+    <div v-if="selectedDetailStudent" class="modal-overlay" @click.self="selectedDetailStudent = null">
+      <div class="modal-box modal-lg">
+        <div class="modal-header">
+          <div>
+            <span class="section-kicker">學生詳細成績管理</span>
+            <h3>【{{ selectedDetailStudent.name }} ({{ selectedDetailStudent.studentId }})】各單元評分與記錄</h3>
+          </div>
+          <button class="modal-close" @click="selectedDetailStudent = null">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="detail-overview-bar">
+            <span>累積上線時長：<strong>{{ selectedDetailStudent.onlineDurationMinutes }} 分鐘</strong></span>
+            <span>最近活躍：<strong>{{ formatDate(selectedDetailStudent.lastSeenAt) }}</strong></span>
+            <span>已完成題數：<strong>{{ selectedDetailStudent.completedCount }} / {{ lessons.length }}</strong></span>
+          </div>
+
+          <div class="detail-lessons-list">
+            <div v-for="l in lessons" :key="l.id" class="detail-lesson-row">
+              <div class="detail-lesson-title">
+                <span class="lesson-badge">單元 {{ l.number }}</span>
+                <strong>{{ l.title }}</strong>
+              </div>
+              <div class="detail-lesson-inputs">
+                <label class="detail-check-label">
+                  <input
+                    type="checkbox"
+                    v-model="selectedDetailStudent.completedLessons[l.id]"
+                    @change="selectedDetailStudent.isDirty = true"
+                  />
+                  <span>標記完成</span>
+                </label>
+                <div class="detail-score-box">
+                  <label>得分：</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="未評分"
+                    v-model.number="selectedDetailStudent.scores[l.id]"
+                    class="input-control score-number-input"
+                    @input="selectedDetailStudent.isDirty = true"
+                  />
+                  <span>分</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline" @click="selectedDetailStudent = null">關閉</button>
+          <button class="btn btn-primary" @click="closeStudentDetail">💾 儲存此學生紀錄</button>
+        </div>
+      </div>
     </div>
 
     <!-- 階段管理彈窗 (Stage Modal) -->

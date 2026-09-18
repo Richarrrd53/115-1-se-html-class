@@ -1,0 +1,29 @@
+﻿{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/SE-HTML-class/assets/:match*",
+      "destination": "/assets/:match*"
+    },
+    {
+      "source": "/SE-HTML-class/edit.html",
+      "destination": "/edit.html"
+    },
+    {
+      "source": "/SE-HTML-class/edit",
+      "destination": "/edit.html"
+    },
+    {
+      "source": "/SE-HTML-class",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/SE-HTML-class/:match*",
+      "destination": "/:match*"
+    },
+    {
+      "source": "/edit",
+      "destination": "/edit.html"
+    }
+  ]
+}

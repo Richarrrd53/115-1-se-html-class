@@ -188,28 +188,43 @@ export function resetToDefault() {
   saveCourseData()
 }
 
-export function exportJson(): string {
-  const data: StoredData = {
-    stages: stages.value,
-    lessons: lessons.value,
+export function importLessonsTs(tsCode: string): { success: boolean; message: string } {
+  try {
+    const stageIndex = tsCode.search(/(export\s+)?const\s+stages/i)
+    let cleaned = stageIndex !== -1 ? tsCode.slice(stageIndex) : tsCode
+
+    cleaned = cleaned.replace(/import\s+[\s\S]*?from\s+['"][^'"]+['"];?/g, '')
+    cleaned = cleaned.replace(/\bexport\s+/g, '')
+    cleaned = cleaned.replace(/(const\s+[a-zA-Z0-9_]+)\s*:[^=]+=/g, '$1 =')
+    cleaned = cleaned.replace(/\(html:\s*string,\s*css\s*=\s*['"][^'"]*['"],\s*js\s*=\s*['"][^'"]*['"]\):\s*Code\s*=>/g, '(html, css = "", js = "") =>')
+    cleaned = cleaned.replace(/\(value:\s*string,\s*type:\s*keyof\s*Code\)/g, '(value, type)')
+    cleaned = cleaned.replace(/\(value:\s*Code\):\s*Code\s*=>/g, '(value) =>')
+
+    const runner = new Function(`
+      ${cleaned}
+      let finalStages = typeof stages !== 'undefined' ? stages : (typeof defaultStages !== 'undefined' ? defaultStages : []);
+      let finalLessons = typeof lessons !== 'undefined' ? lessons : (typeof defaultLessons !== 'undefined' ? defaultLessons : []);
+      return { stages: finalStages, lessons: finalLessons };
+    `)
+
+    const result = runner()
+    if (Array.isArray(result.stages) && Array.isArray(result.lessons) && result.lessons.length > 0) {
+      stages.value = result.stages
+      lessons.value = result.lessons
+      saveCourseData()
+      return {
+        success: true,
+        message: `成功匯入！共讀取到 ${result.stages.length} 個階段與 ${result.lessons.length} 個單元。`,
+      }
+    } else {
+      return { success: false, message: '解析失敗：未能從上傳的 .ts 檔案中讀取到合法的 stages 或 lessons 陣列。' }
+    }
+  } catch (err: any) {
+    console.error('匯入 TS 失敗:', err)
+    return { success: false, message: `解析 TS 檔案時發生語法錯誤：${err?.message || err}` }
   }
-  return JSON.stringify(data, null, 2)
 }
 
-export function importJson(jsonString: string): boolean {
-  try {
-    const data = JSON.parse(jsonString)
-    if (Array.isArray(data.stages) && Array.isArray(data.lessons) && data.lessons.length > 0) {
-      stages.value = data.stages
-      lessons.value = data.lessons
-      saveCourseData()
-      return true
-    }
-  } catch (err) {
-    console.error('匯入 JSON 失敗:', err)
-  }
-  return false
-}
 
 export function generateLessonsTsCode(): string {
   const stageEntries = stages.value.map(s => `  { id: ${s.id}, title: ${JSON.stringify(s.title)} },`).join('\n')
