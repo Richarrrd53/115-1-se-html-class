@@ -25,15 +25,31 @@ let welcomeTimeout: ReturnType<typeof setTimeout> | null = null
 const practiceStudents = ref<string[]>([])
 const practiceSyncError = ref(false)
 const submissionMessage = ref('')
-const isSubmitting = ref(false)
 const isAiVerifying = ref(false)
 const aiQueueMessage = ref('')
 const aiResult = ref<AiVerificationResult | null>(null)
+const initialSubmissionCounts: Record<string, number> = (() => {
+  try {
+    return JSON.parse(localStorage.getItem('lesson-submission-counts') || '{}')
+  } catch {
+    return {}
+  }
+})()
+const lessonSubmissionCounts = ref<Record<string, number>>(initialSubmissionCounts)
+watch(
+  lessonSubmissionCounts,
+  (val) => localStorage.setItem('lesson-submission-counts', JSON.stringify(val)),
+  { deep: true },
+)
 
 const lesson = computed<Lesson>(() => lessons.value.find((item) => item.id === selectedLessonId.value) || lessons.value[0])
 const practice = computed(() => lesson.value?.practice || { instructions: '', starterCode: { html: '', css: '', js: '' }, checklist: [], answer: { html: '', css: '', js: '' } })
 const code = ref({ ...practice.value.starterCode })
 const isCurrentComplete = computed(() => (lesson.value ? completedLessons.value[lesson.value.id] || false : false))
+const hasSubmittedAtLeastOnce = computed(() => {
+  const lessonId = lesson.value?.id || ''
+  return (lessonSubmissionCounts.value[lessonId] || 0) > 0 || Boolean(isCurrentComplete.value)
+})
 const completedCount = computed(() => Object.values(completedLessons.value).filter(Boolean).length)
 const progress = computed(() => (lessons.value.length ? Math.round((completedCount.value / lessons.value.length) * 100) : 0))
 
@@ -93,27 +109,20 @@ const activePanelErrors = computed(() => {
   return aiResult.value?.errors.filter((e) => e.panel === activePanel.value) || []
 })
 
-function getChecklistPassed(itemText: string): boolean | null {
-  if (!aiResult.value || !aiResult.value.checklistStatus?.length) return null
-  const match = aiResult.value.checklistStatus.find(
-    (c) => c.text.includes(itemText) || itemText.includes(c.text),
-  )
-  return match ? match.passed : null
-}
-
 async function runAiVerification() {
   const trimmedId = studentId.value.trim()
   const trimmedName = studentName.value.trim()
 
   if (!trimmedId || !trimmedName) {
     showStudentProfileModal.value = true
-    studentProfileError.value = '請先填寫並驗證學號與姓名後，再進行 Gemini 智能核對！'
+    studentProfileError.value = '請先填寫並驗證學號與姓名後，再進行驗證答案！'
     return
   }
 
   isAiVerifying.value = true
   aiQueueMessage.value = ''
   aiResult.value = null
+  submissionMessage.value = ''
 
   try {
     const result = await verifyPracticeWithAI(
@@ -134,6 +143,9 @@ async function runAiVerification() {
       },
     )
 
+    lessonSubmissionCounts.value[lesson.value.id] =
+      (lessonSubmissionCounts.value[lesson.value.id] || 0) + 1
+
     aiResult.value = result
 
     if (result.passed) {
@@ -142,7 +154,9 @@ async function runAiVerification() {
       aiQueueMessage.value = ''
     }
   } catch (error: any) {
-    console.error('AI 批改失敗：', error)
+    lessonSubmissionCounts.value[lesson.value.id] =
+      (lessonSubmissionCounts.value[lesson.value.id] || 0) + 1
+    console.error('驗證失敗：', error)
   } finally {
     isAiVerifying.value = false
   }
@@ -192,6 +206,9 @@ function toggleComplete() {
     const completed = !isCurrentComplete.value
     completedLessons.value = { ...completedLessons.value, [lesson.value.id]: completed }
     syncPractice(completed)
+    submissionMessage.value = completed
+      ? '已標記為完成並成功存入資料庫！'
+      : '已取消完成狀態並更新至資料庫。'
   }
 }
 
@@ -228,42 +245,6 @@ async function refreshPracticeStudents() {
     practiceSyncError.value = false
   } catch {
     practiceSyncError.value = true
-  }
-}
-
-async function submitPractice() {
-  submissionMessage.value = ''
-  const trimmedId = studentId.value.trim()
-  const trimmedName = studentName.value.trim()
-  if (!trimmedId || !trimmedName || !lesson.value) {
-    submissionMessage.value = '請輸入學號與姓名！'
-    return
-  }
-
-  isSubmitting.value = true
-  try {
-    const verifyRes = await verifyCourseMember(trimmedId, trimmedName)
-    if (!verifyRes.valid) {
-      submissionMessage.value = verifyRes.error || '錯誤！你目前沒有在課程中，請檢查你的學號/姓名是否正確！'
-      return
-    }
-
-    const { error } = await supabase.from('practice_submissions').insert({
-      student_id: trimmedId,
-      student_name: trimmedName,
-      lesson_id: lesson.value.id,
-      code: JSON.stringify(code.value),
-    })
-    if (error) throw error
-    localStorage.setItem('webcraft-student-id', trimmedId)
-    localStorage.setItem('webcraft-student-name', trimmedName)
-    submissionMessage.value = '練習已成功送出！'
-    await refreshPracticeStudents()
-  } catch (error) {
-    console.error('送出失敗：', error)
-    submissionMessage.value = '送出失敗，請稍後再試。'
-  } finally {
-    isSubmitting.value = false
   }
 }
 
@@ -441,7 +422,7 @@ const previewDocument = computed(() => `<!doctype html>
               <div class="success-top">
                 <span class="success-trophy">🏆</span>
                 <div>
-                  <h3 class="success-title">實作核對通過！Gemini 評分：<span class="score-highlight">{{ aiResult.score }} / 100 分</span></h3>
+                  <h3 class="success-title">實作核對通過！得分：<span class="score-highlight">{{ aiResult.score }} / 100 分</span></h3>
                   <p class="success-summary">{{ aiResult.summary }}</p>
                 </div>
               </div>
@@ -504,38 +485,38 @@ const previewDocument = computed(() => `<!doctype html>
               <iframe :srcdoc="previewDocument" title="程式碼即時預覽" sandbox="allow-scripts"></iframe>
             </div>
           </div>
-          <div class="checklist">
-            <div class="checklist-title">自我檢查 <span>（可點擊「Gemini 智能核對」自動比對驗證）</span></div>
-            <label
-              v-for="item in practice.checklist"
-              :key="item"
-              :class="{
-                'checklist-row': true,
-                'checklist-row-failed': getChecklistPassed(item) === false,
-                'checklist-row-passed': getChecklistPassed(item) === true
-              }"
-            >
-              <input type="checkbox" :checked="getChecklistPassed(item) ?? isCurrentComplete" @change="toggleComplete">
-              <span v-html="renderInlineMarkdown(item)"></span>
-              <span v-if="getChecklistPassed(item) === false" class="tag-failed-item">❌ 未達成</span>
-              <span v-else-if="getChecklistPassed(item) === true" class="tag-passed-item">✓ 已通過</span>
-            </label>
-          </div>
           <div class="challenge-actions">
+            <!-- 驗證答案按鈕（原全部按鈕移除，改為此按鈕，不顯示 gemini） -->
             <button
               class="ai-verify-btn"
               :disabled="isAiVerifying"
               type="button"
               @click="runAiVerification"
-              title="將程式碼與題目傳給 Gemini 進行智能驗證並給分"
+              title="驗證答案並進行評分"
             >
               <span v-if="isAiVerifying" class="spinner-icon">⏳</span>
-              <span v-else>🤖</span>
-              {{ isAiVerifying ? 'Gemini 智能審核中...' : 'Gemini 智能核對' }}
+              <span v-else>🔍</span>
+              {{ isAiVerifying ? '驗證中...' : '驗證答案' }}
             </button>
-            <button class="answer-button" @click="showAnswer = !showAnswer">{{ showAnswer ? '隱藏參考答案' : '查看參考答案' }} <span>⌄</span></button>
-            <button class="complete-button" :class="{ completed: isCurrentComplete }" @click="toggleComplete">{{ isCurrentComplete ? '已完成 ✓' : '標記為完成' }}</button>
-            <button id="btn-submit-practice" class="complete-button" :disabled="isSubmitting" type="button" @click="submitPractice">{{ isSubmitting ? '送出中...' : '送出練習' }}</button>
+
+            <!-- 至少送出 1 次後才出現：查看參考答案、標記完成狀態(存入資料庫) -->
+            <template v-if="hasSubmittedAtLeastOnce">
+              <button
+                class="answer-button"
+                type="button"
+                @click="showAnswer = !showAnswer"
+              >
+                {{ showAnswer ? '隱藏參考答案' : '查看參考答案' }} <span>⌄</span>
+              </button>
+              <button
+                class="complete-button"
+                :class="{ completed: isCurrentComplete }"
+                type="button"
+                @click="toggleComplete"
+              >
+                {{ isCurrentComplete ? '已完成 (存入資料庫) ✓' : '標記完成狀態 (存入資料庫)' }}
+              </button>
+            </template>
           </div>
           <p v-if="submissionMessage" class="submission-message" role="status" aria-live="polite">{{ submissionMessage }}</p>
           <div v-if="showAnswer" class="answer-box">
