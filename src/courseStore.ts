@@ -42,9 +42,6 @@ export const lessons = ref<Lesson[]>(initial.lessons)
 export const isSyncingCourseData = ref(false)
 export const lastSyncTime = ref<string | null>(null)
 
-// 記錄 course_content 資料表是否可用（避免反覆觸發 404 請求）
-let courseContentTableAvailable: boolean | null = null
-
 function broadcastCourseData() {
   const data: StoredData = {
     stages: stages.value,
@@ -62,56 +59,56 @@ function broadcastCourseData() {
 export async function syncCourseDataFromDatabase(): Promise<boolean> {
   isSyncingCourseData.value = true
   try {
-    // 1. 優先嘗試專屬之 course_content 資料表（若已知不可用則跳過）
-    if (courseContentTableAvailable !== false) {
-      try {
-        const { data, error } = await supabase
-          .from('course_content')
-          .select('stages, lessons, updated_at')
-          .eq('id', 'current')
-          .maybeSingle()
+    // 1. 優先嘗試專屬之 course_content 資料表（若尚未建表則靜默略過）
+    try {
+      const { data, error } = await supabase
+        .from('course_content')
+        .select('stages, lessons, updated_at')
+        .eq('id', 'current')
+        .maybeSingle()
 
-        if (error) {
-          // 資料表不存在，標記為不可用，後續查詢直接跳過
-          courseContentTableAvailable = false
-        } else {
-          courseContentTableAvailable = true
-          if (data?.lessons && Array.isArray(data.lessons) && data.lessons.length > 0) {
-            stages.value = data.stages || defaultStages
-            lessons.value = data.lessons
-            lastSyncTime.value = data.updated_at || new Date().toISOString()
-            localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
-            broadcastCourseData()
-            return true
-          }
-        }
-      } catch {
-        courseContentTableAvailable = false
-      }
-    }
-
-    // 2. 備援方案：從 practice_submissions 資料表查詢最新課程資料 (student_id = '__SYSTEM_COURSE_DATA__')
-    const { data: subData, error: subError } = await supabase
-      .from('practice_submissions')
-      .select('code, created_at')
-      .eq('student_id', '__SYSTEM_COURSE_DATA__')
-      .order('id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (!subError && subData?.code) {
-      const parsed = JSON.parse(subData.code)
-      if (Array.isArray(parsed.lessons) && parsed.lessons.length > 0) {
-        stages.value = parsed.stages || defaultStages
-        lessons.value = parsed.lessons
-        lastSyncTime.value = subData.created_at || new Date().toISOString()
+      // 404 means table not created yet in Supabase – silently skip
+      if (error && (error as any).code === 'PGRST116') {
+        // no rows found, skip silently
+      } else if (!error && data?.lessons && Array.isArray(data.lessons) && data.lessons.length > 0) {
+        stages.value = data.stages || defaultStages
+        lessons.value = data.lessons
+        lastSyncTime.value = data.updated_at || new Date().toISOString()
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
         broadcastCourseData()
         return true
       }
+    } catch {
+      // Table may not exist yet – silently fall through
+    }
+
+    // 2. 備援方案：從 practice_submissions 資料表查詢最新課程資料 (student_id = '__SYSTEM_COURSE_DATA__')
+    try {
+      const { data: subData, error: subError } = await supabase
+        .from('practice_submissions')
+        .select('code, created_at')
+        .eq('student_id', '__SYSTEM_COURSE_DATA__')
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!subError && subData?.code) {
+        const parsed = JSON.parse(subData.code)
+        if (Array.isArray(parsed.lessons) && parsed.lessons.length > 0) {
+          stages.value = parsed.stages || defaultStages
+          lessons.value = parsed.lessons
+          lastSyncTime.value = subData.created_at || new Date().toISOString()
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
+          broadcastCourseData()
+          return true
+        }
+      }
+    } catch {
+      // practice_submissions may not have course data yet
     }
   } catch (err) {
-    console.warn('從資料庫同步教材失敗，使用本機快取：', err)
+    // Silent – use localStorage fallback
+    void err
   } finally {
     isSyncingCourseData.value = false
   }
@@ -132,25 +129,15 @@ export async function saveCourseDataToDatabase(): Promise<{ success: boolean; me
   isSyncingCourseData.value = true
   try {
     let savedToDedicatedTable = false
-    // 只在資料表已確認可用（或尚未測試過）時才嘗試 upsert
-    if (courseContentTableAvailable !== false) {
-      try {
-        const { error } = await supabase.from('course_content').upsert({
-          id: 'current',
-          stages: payload.stages,
-          lessons: payload.lessons,
-          updated_at: new Date().toISOString(),
-        })
-        if (!error) {
-          savedToDedicatedTable = true
-          courseContentTableAvailable = true
-        } else {
-          courseContentTableAvailable = false
-        }
-      } catch {
-        courseContentTableAvailable = false
-      }
-    }
+    try {
+      const { error } = await supabase.from('course_content').upsert({
+        id: 'current',
+        stages: payload.stages,
+        lessons: payload.lessons,
+        updated_at: new Date().toISOString(),
+      })
+      if (!error) savedToDedicatedTable = true
+    } catch {}
 
     // 同步寫入 practice_submissions 確保在未建表時也能即刻儲存
     const { error: subErr } = await supabase.from('practice_submissions').insert({

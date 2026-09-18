@@ -318,7 +318,8 @@ async function recordSubmissionToSupabase(
   result: AiVerificationResult,
 ) {
   try {
-    await supabase.from('practice_submissions').insert({
+    // 1. 優先嘗試寫入全欄位
+    const { error } = await supabase.from('practice_submissions').insert({
       student_id: payload.studentId,
       student_name: payload.studentName,
       lesson_id: payload.lessonId,
@@ -327,7 +328,24 @@ async function recordSubmissionToSupabase(
       score: result.score,
       ai_feedback: `${result.summary}\n${result.feedback || ''}`,
     })
-  } catch (e) {
-    console.warn('同步至 Supabase 略過：', e)
+
+    // 2. 若資料表尚未擴展欄位（PGRST204 400 Bad Request），退回基本欄位並將成績存入 code.__meta
+    if (error) {
+      await supabase.from('practice_submissions').insert({
+        student_id: payload.studentId,
+        student_name: payload.studentName,
+        lesson_id: payload.lessonId,
+        code: JSON.stringify({
+          ...payload.studentCode,
+          __meta: {
+            completed: result.passed,
+            score: result.score,
+            ai_feedback: `${result.summary}\n${result.feedback || ''}`,
+          },
+        }),
+      })
+    }
+  } catch {
+    // 靜默保護，不干擾學生作答
   }
 }

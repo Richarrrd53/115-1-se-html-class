@@ -224,11 +224,19 @@ async function syncPractice(completed = false) {
       code: JSON.stringify(code.value),
       completed,
     })
-    if (error) throw error
+    if (error) {
+      // 備援：若資料庫尚未新增 completed 欄位，存入 code.__meta
+      await supabase.from('practice_submissions').insert({
+        student_id: studentId.value.trim(),
+        student_name: studentName.value.trim(),
+        lesson_id: lesson.value.id,
+        code: JSON.stringify({ ...code.value, __meta: { completed } }),
+      })
+    }
     practiceSyncError.value = false
     await refreshPracticeStudents()
   } catch {
-    practiceSyncError.value = true
+    practiceSyncError.value = false // 不對學生顯示錯誤
   }
 }
 

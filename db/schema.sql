@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS practice_submissions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFAULT FALSE;
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS score INT DEFAULT 0;
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS online_duration_minutes INT DEFAULT 0;

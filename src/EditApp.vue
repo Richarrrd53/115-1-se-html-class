@@ -198,14 +198,31 @@ async function loadStudentsFallback() {
           memberMap.set(normId, st)
         }
         st.submissionsCount++
-        if (typeof sub.score === 'number' && sub.score > 0) {
-          st.scores[sub.lesson_id] = Math.max(st.scores[sub.lesson_id] || 0, sub.score)
+        
+        // 優先從獨立欄位讀取，若無則從 code.__meta 解析（相容尚未擴展 schema 的資料庫）
+        let subScore = typeof sub.score === 'number' ? sub.score : null
+        let subCompleted = typeof sub.completed === 'boolean' ? sub.completed : null
+        let subDuration = typeof sub.online_duration_minutes === 'number' ? sub.online_duration_minutes : null
+
+        if (subScore === null || subCompleted === null) {
+          try {
+            const parsedCode = JSON.parse(sub.code || '{}')
+            if (parsedCode.__meta) {
+              if (subScore === null && typeof parsedCode.__meta.score === 'number') subScore = parsedCode.__meta.score
+              if (subCompleted === null && typeof parsedCode.__meta.completed === 'boolean') subCompleted = parsedCode.__meta.completed
+              if (subDuration === null && typeof parsedCode.__meta.online_duration_minutes === 'number') subDuration = parsedCode.__meta.online_duration_minutes
+            }
+          } catch {}
         }
-        if (sub.completed) {
+
+        if (subScore && subScore > 0) {
+          st.scores[sub.lesson_id] = Math.max(st.scores[sub.lesson_id] || 0, subScore)
+        }
+        if (subCompleted) {
           st.completedLessons[sub.lesson_id] = true
         }
-        if (sub.online_duration_minutes) {
-          st.onlineDurationMinutes = Math.max(st.onlineDurationMinutes, sub.online_duration_minutes)
+        if (subDuration) {
+          st.onlineDurationMinutes = Math.max(st.onlineDurationMinutes, subDuration)
         }
         if (!st.lastSeenAt || new Date(sub.created_at) > new Date(st.lastSeenAt)) {
           st.lastSeenAt = sub.created_at
@@ -244,15 +261,31 @@ async function saveStudent(student: StudentAdminRecord) {
   try {
     await supabase.from('course_members').update({ name: student.name }).eq('student_id', student.studentId)
     for (const [lessonId, score] of Object.entries(student.scores)) {
-      await supabase.from('practice_submissions').insert({
+      const isCompleted = student.completedLessons[lessonId] || score >= 80
+      const { error } = await supabase.from('practice_submissions').insert({
         student_id: student.studentId,
         student_name: student.name,
         lesson_id: lessonId,
         code: '{}',
-        completed: student.completedLessons[lessonId] || score >= 80,
+        completed: isCompleted,
         score: score,
         online_duration_minutes: student.onlineDurationMinutes,
       })
+      // 若遠端無獨立欄位，存入 code.__meta 備援
+      if (error) {
+        await supabase.from('practice_submissions').insert({
+          student_id: student.studentId,
+          student_name: student.name,
+          lesson_id: lessonId,
+          code: JSON.stringify({
+            __meta: {
+              completed: isCompleted,
+              score,
+              online_duration_minutes: student.onlineDurationMinutes,
+            },
+          }),
+        })
+      }
     }
   } catch (err) {
     console.warn('Supabase 更新略過：', err)
