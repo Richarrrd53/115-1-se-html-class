@@ -11,7 +11,7 @@ WebCraft 是一個以 **Vite + Vue 3 + TypeScript** 建立的前端互動學習�
 - **Vite**：提供快速的開發伺服器與生產環境打包流程。
 - **互動課程**：依 HTML、CSS、視覺效果、排版動態與 JavaScript 分階段學習。
 - **即時預覽**：在練習區編輯 HTML、CSS、JavaScript 後，即時查看結果。
-- **進度記錄**：使用瀏覽器 `localStorage` 保存目前單元與完成狀態。
+- **進度記錄**：使用瀏覽器 `localStorage` 保存個人狀態，並透過 Supabase 記錄練習提交。
 
 ## 目錄結構與模組說明
 
@@ -86,6 +86,17 @@ npm --version
 ```bash
 npm install
 ```
+
+### 啟用 Supabase 練習紀錄
+
+在 Supabase SQL Editor 執行 `db/schema.sql`，建立 `practice_submissions` 資料表。再於專案根目錄建立 `.env`，填入 Supabase 專案設定：
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+首頁輸入學號與姓名後，按下「送出練習」或「標記為完成」，目前單元與編輯器內的 HTML、CSS、JavaScript 會直接寫入 Supabase。`.env` 不應提交到 Git；GitHub Actions 部署時也需要在 repository secrets 或 variables 設定相同的 `VITE_SUPABASE_URL` 與 `VITE_SUPABASE_ANON_KEY`。
 
 ### 啟動本地開發伺服器
 

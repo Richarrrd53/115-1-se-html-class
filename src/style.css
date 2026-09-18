@@ -13,8 +13,15 @@ button { cursor: pointer; }
 .brand span { display: block; color: #8992a6; font-size: 12px; margin-top: 1px; }
 .top-progress { display: flex; align-items: center; gap: 12px; margin-left: auto; color: #8992a6; font-size: 13px; }
 .top-progress b { color: #3149d8; font-size: 12px; }
+.practice-presence { display: flex; align-items: center; gap: 7px; color: #8992a6; font-size: 12px; white-space: nowrap; }
+.practice-presence input { width: 82px; border: 1px solid #e3e7ef; border-radius: 7px; padding: 7px 8px; color: #172033; font-size: 12px; outline: 0; }
+.practice-presence input + input { width: 105px; }
+.practice-presence input:focus { border-color: #5268e6; }
+.practice-presence small { color: #41ae89; }
+.practice-presence small.error { color: #d86868; }
 .progress-track { width: 110px; height: 7px; background: #edf0f7; border-radius: 99px; overflow: hidden; }
 .progress-track i { display: block; height: 100%; background: #5268e6; border-radius: inherit; transition: width .3s; }
+.submission-message { color: #41ae89; font-size: 13px; margin: 12px 0 0; }
 .ghost-button { border: 1px solid #e3e7ef; background: white; border-radius: 8px; padding: 9px 13px; color: #657089; font-size: 13px; }
 .workspace { display: flex; max-width: 1500px; margin: 0 auto; }
 .sidebar { width: 260px; flex: 0 0 260px; background: #fff; border-right: 1px solid #e8ebf2; min-height: calc(100vh - 78px); padding: 29px 15px; }
@@ -647,6 +654,15 @@ textarea { display: block; resize: none; width: 100%; height: 270px; border: 0; 
   gap: 10px;
   background: #fbfcfe;
 }
+.student-profile-overlay { z-index: 200; }
+.student-profile-modal { max-width: 440px; }
+.student-profile-body { display: flex; flex-direction: column; gap: 8px; }
+.student-profile-body p { color: #6f7a90; font-size: 13px; line-height: 1.7; margin: 0 0 8px; }
+.student-profile-body label { color: #46536c; font-size: 13px; font-weight: 700; margin-top: 5px; }
+.student-profile-body input { width: 100%; border: 1px solid #d8deeb; border-radius: 7px; padding: 10px 11px; color: #172033; font-size: 14px; outline: 0; }
+.student-profile-body input:focus { border-color: #5268e6; box-shadow: 0 0 0 3px #5268e61f; }
+.student-profile-error { color: #d86868 !important; margin: 4px 0 0 !important; }
+.student-profile-footer { justify-content: flex-end; }
 
 /* 階段管理彈窗內部 */
 .add-stage-form {

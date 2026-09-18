@@ -17,6 +17,7 @@ import {
   saveCourseData,
 } from './courseStore'
 
+const baseUrl = import.meta.env.BASE_URL
 
 // 當前選取的單元 ID
 const selectedLessonId = ref<string>(lessons.value[0]?.id || '')
@@ -100,7 +101,7 @@ function syncToIframe() {
 
 function reloadPreview() {
   if (previewIframe.value) {
-    previewIframe.value.src = `/index.html?lesson=${selectedLessonId.value}&t=${Date.now()}`
+    previewIframe.value.src = `${baseUrl}index.html?lesson=${selectedLessonId.value}&t=${Date.now()}`
   }
 }
 
@@ -279,7 +280,7 @@ function handleResetDefault() {
           ↺ 還原預設
         </button>
 
-        <a href="/" target="_blank" class="btn btn-link">
+        <a :href="baseUrl" target="_blank" class="btn btn-link">
           👀 開啟學習頁面 ↗
         </a>
       </div>
@@ -692,7 +693,7 @@ function handleResetDefault() {
         <div class="iframe-container-wrapper" :class="previewDevice">
           <iframe
             ref="previewIframe"
-            :src="`/index.html?lesson=${selectedLessonId}`"
+            :src="`${baseUrl}index.html?lesson=${selectedLessonId}`"
             class="live-preview-frame"
             @load="onIframeLoad"
           ></iframe>

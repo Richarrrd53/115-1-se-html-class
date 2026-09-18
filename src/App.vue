@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { lessons, stages, type Lesson } from './courseStore'
+import { supabase } from './supabase'
 
+const baseUrl = import.meta.env.BASE_URL
 const selectedLessonId = ref(localStorage.getItem('selected-lesson') || (lessons.value[0]?.id || '1-1'))
 const showAnswer = ref(false)
 const activePanel = ref<'html' | 'css' | 'js'>('html')
@@ -9,6 +11,14 @@ const savedProgress = JSON.parse(localStorage.getItem('completed-levels') || '{}
 const completedLessons = ref<Record<string, boolean>>(
   Object.fromEntries(Object.entries(savedProgress).map(([id, value]) => [id, Array.isArray(value) ? value.some(Boolean) : value])),
 )
+const studentId = ref(localStorage.getItem('webcraft-student-id') || '')
+const studentName = ref(localStorage.getItem('webcraft-student-name') || '')
+const showStudentProfileModal = ref(!studentId.value.trim() || !studentName.value.trim())
+const studentProfileError = ref('')
+const practiceStudents = ref<string[]>([])
+const practiceSyncError = ref(false)
+const submissionMessage = ref('')
+const isSubmitting = ref(false)
 
 const lesson = computed<Lesson>(() => lessons.value.find((item) => item.id === selectedLessonId.value) || lessons.value[0])
 const practice = computed(() => lesson.value?.practice || { instructions: '', starterCode: { html: '', css: '', js: '' }, checklist: [], answer: { html: '', css: '', js: '' } })
@@ -23,6 +33,7 @@ watch(selectedLessonId, () => {
     code.value = { ...lesson.value.practice.starterCode }
   }
   localStorage.setItem('selected-lesson', selectedLessonId.value)
+  refreshPracticeStudents()
 })
 
 watch(
@@ -60,9 +71,92 @@ function resetCode() {
   }
 }
 
+function confirmStudentProfile() {
+  const trimmedStudentId = studentId.value.trim()
+  const trimmedStudentName = studentName.value.trim()
+  if (!trimmedStudentId || !trimmedStudentName) {
+    studentProfileError.value = '請輸入學號與姓名後再開始練習。'
+    return
+  }
+
+  studentId.value = trimmedStudentId
+  studentName.value = trimmedStudentName
+  localStorage.setItem('webcraft-student-id', trimmedStudentId)
+  localStorage.setItem('webcraft-student-name', trimmedStudentName)
+  localStorage.setItem('webcraft-student-profile-completed', 'true')
+  studentProfileError.value = ''
+  showStudentProfileModal.value = false
+}
+
 function toggleComplete() {
   if (lesson.value) {
-    completedLessons.value = { ...completedLessons.value, [lesson.value.id]: !isCurrentComplete.value }
+    const completed = !isCurrentComplete.value
+    completedLessons.value = { ...completedLessons.value, [lesson.value.id]: completed }
+    syncPractice(completed)
+  }
+}
+
+async function syncPractice(completed = false) {
+  if (!studentId.value.trim() || !studentName.value.trim() || !lesson.value) return
+  localStorage.setItem('webcraft-student-name', studentName.value.trim())
+  localStorage.setItem('webcraft-student-id', studentId.value.trim())
+  try {
+    const { error } = await supabase.from('practice_submissions').insert({
+      student_id: studentId.value.trim(),
+      student_name: studentName.value.trim(),
+      lesson_id: lesson.value.id,
+      code: JSON.stringify(code.value),
+      completed,
+    })
+    if (error) throw error
+    practiceSyncError.value = false
+    await refreshPracticeStudents()
+  } catch {
+    practiceSyncError.value = true
+  }
+}
+
+async function refreshPracticeStudents() {
+  if (!lesson.value) return
+  try {
+    const { data, error } = await supabase
+      .from('practice_submissions')
+      .select('student_name')
+      .eq('lesson_id', lesson.value.id)
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    practiceStudents.value = [...new Set((data ?? []).map((student) => student.student_name))]
+    practiceSyncError.value = false
+  } catch {
+    practiceSyncError.value = true
+  }
+}
+
+async function submitPractice() {
+  submissionMessage.value = ''
+  if (!studentId.value.trim() || !studentName.value.trim() || !lesson.value) {
+    submissionMessage.value = '請輸入學號與姓名！'
+    return
+  }
+
+  isSubmitting.value = true
+  try {
+    const { error } = await supabase.from('practice_submissions').insert({
+      student_id: studentId.value.trim(),
+      student_name: studentName.value.trim(),
+      lesson_id: lesson.value.id,
+      code: JSON.stringify(code.value),
+    })
+    if (error) throw error
+    localStorage.setItem('webcraft-student-id', studentId.value.trim())
+    localStorage.setItem('webcraft-student-name', studentName.value.trim())
+    submissionMessage.value = '練習已成功送出！'
+    await refreshPracticeStudents()
+  } catch (error) {
+    console.error('送出失敗：', error)
+    submissionMessage.value = '送出失敗，請稍後再試。'
+  } finally {
+    isSubmitting.value = false
   }
 }
 
@@ -81,6 +175,7 @@ onMounted(() => {
     selectedLessonId.value = queryLesson
   }
   window.addEventListener('message', handleWindowMessage)
+  refreshPracticeStudents()
 })
 
 onUnmounted(() => {
@@ -96,6 +191,27 @@ const previewDocument = computed(() => `<!doctype html>
 
 <template>
   <div v-if="lesson" class="app-shell">
+    <div v-if="showStudentProfileModal" class="modal-overlay student-profile-overlay">
+      <form class="modal-box student-profile-modal" @submit.prevent="confirmStudentProfile">
+        <div class="modal-header">
+          <div>
+            <span class="section-kicker">開始學習</span>
+            <h3>請先留下你的學習資料</h3>
+          </div>
+        </div>
+        <div class="modal-body student-profile-body">
+          <p>填寫一次即可開始練習，之後系統會用這些資料記錄你的作業。</p>
+          <label for="student-id">學號</label>
+          <input id="student-id" v-model="studentId" required maxlength="40" autocomplete="username" placeholder="例如：114213213" />
+          <label for="student-name">姓名</label>
+          <input id="student-name" v-model="studentName" required maxlength="80" autocomplete="name" placeholder="例如：王小明" />
+          <p v-if="studentProfileError" class="student-profile-error" role="alert">{{ studentProfileError }}</p>
+        </div>
+        <div class="modal-footer student-profile-footer">
+          <button class="complete-button" type="submit">開始練習</button>
+        </div>
+      </form>
+    </div>
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">&lt;/&gt;</div>
@@ -106,8 +222,14 @@ const previewDocument = computed(() => `<!doctype html>
         <div class="progress-track"><i :style="{ width: `${progress}%` }"></i></div>
         <b>{{ progress }}%</b>
       </div>
+      <div class="practice-presence">
+        <input v-model="studentId" placeholder="學號" maxlength="40" />
+        <input v-model="studentName" placeholder="你的姓名" maxlength="80" />
+        <span>{{ practiceStudents.length }} 位同學練習中</span>
+        <small v-if="practiceSyncError" class="error">API 未連線</small>
+      </div>
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">⌂ 回到總覽</button>
-      <a href="/edit.html" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
+      <a :href="`${baseUrl}edit.html`" class="edit-nav-button" title="開啟獨立教材編輯頁面">✏️ 編輯教材</a>
     </header>
 
     <div class="workspace">
@@ -183,7 +305,9 @@ const previewDocument = computed(() => `<!doctype html>
           <div class="challenge-actions">
             <button class="answer-button" @click="showAnswer = !showAnswer">{{ showAnswer ? '隱藏參考答案' : '查看參考答案' }} <span>⌄</span></button>
             <button class="complete-button" :class="{ completed: isCurrentComplete }" @click="toggleComplete">{{ isCurrentComplete ? '已完成 ✓' : '標記為完成' }}</button>
+            <button id="btn-submit-practice" class="complete-button" :disabled="isSubmitting" type="button" @click="submitPractice">{{ isSubmitting ? '送出中...' : '送出練習' }}</button>
           </div>
+          <p v-if="submissionMessage" class="submission-message" role="status" aria-live="polite">{{ submissionMessage }}</p>
           <div v-if="showAnswer" class="answer-box">
             <strong>參考答案</strong>
             <div v-for="panel in [{ name: 'HTML', code: practice.answer.html }, { name: 'CSS', code: practice.answer.css }, { name: 'JavaScript', code: practice.answer.js }]" :key="panel.name" class="answer-section">
