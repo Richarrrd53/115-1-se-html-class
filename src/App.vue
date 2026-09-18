@@ -120,30 +120,14 @@ const historyMaskStyle = computed(() => {
   }
 
   const { topTranslateY, bottomTranslateY } = historyScrollState.value
-  const topFadeRaw = Math.max(0, Math.min(50, 50 + topTranslateY))
-  const bottomFadeRaw = Math.max(0, Math.min(50, 50 - bottomTranslateY))
-  const topFade = topFadeRaw < 0.5 ? 0 : Number(topFadeRaw.toFixed(1))
-  const bottomFade = bottomFadeRaw < 0.5 ? 0 : Number(bottomFadeRaw.toFixed(1))
+  // 上方遮罩隨 scrollTop 0 -> 50px，translateY 從 -50px -> 0px
+  // 底部遮罩隨距離底部 50px -> 0px，translateY 從 0px -> 50px（平滑滑出視口）
+  const topStart = Number(topTranslateY.toFixed(1))
+  const topEnd = Number((topTranslateY + 50).toFixed(1))
+  const bottomStart = Number((50 - bottomTranslateY).toFixed(1))
+  const bottomEnd = Number(bottomTranslateY.toFixed(1))
 
-  let gradientStops: string
-
-  if (topFade === 0 && bottomFade === 0) {
-    return {
-      WebkitMaskImage: 'none',
-      maskImage: 'none',
-    }
-  } else if (topFade === 0) {
-    // 滾動到最頂部（scrollTop = 0）：僅保留下方漸層遮罩
-    gradientStops = `#000000 0px, #000000 calc(100% - ${bottomFade}px), transparent 100%`
-  } else if (bottomFade === 0) {
-    // 滾動到最底部（scrollTop = 100%）：僅保留上方漸層遮罩
-    gradientStops = `transparent 0px, #000000 ${topFade}px, #000000 100%`
-  } else {
-    // 中間狀態：上下皆保留
-    gradientStops = `transparent 0px, #000000 ${topFade}px, #000000 calc(100% - ${bottomFade}px), transparent 100%`
-  }
-
-  const maskValue = `linear-gradient(to bottom, ${gradientStops})`
+  const maskValue = `linear-gradient(to bottom, transparent ${topStart}px, #000000 ${topEnd}px, #000000 calc(100% - ${bottomStart}px), transparent calc(100% + ${bottomEnd}px))`
 
   return {
     WebkitMaskImage: maskValue,

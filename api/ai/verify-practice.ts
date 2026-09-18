@@ -7,7 +7,7 @@ const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 let ai: GoogleGenAI | null = null
 try {
-  ai = new GoogleGenAI({ vertexAI: true, project: projectId, location })
+  ai = new GoogleGenAI({ vertexai: true, project: projectId, location })
 } catch (e) {
   console.warn('[Vercel API] 初始化 GoogleGenAI 失敗，將啟用智慧語意評核備援：', e)
 }
