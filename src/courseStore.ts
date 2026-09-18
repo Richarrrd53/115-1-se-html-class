@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { supabase } from './supabase'
 import {
   defaultStages,
   defaultLessons,
@@ -38,6 +39,117 @@ function loadInitialData(): StoredData {
 const initial = loadInitialData()
 export const stages = ref<Stage[]>(initial.stages)
 export const lessons = ref<Lesson[]>(initial.lessons)
+export const isSyncingCourseData = ref(false)
+export const lastSyncTime = ref<string | null>(null)
+
+function broadcastCourseData() {
+  const data: StoredData = {
+    stages: stages.value,
+    lessons: lessons.value,
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('webcraft-data-changed', { detail: data }))
+    window.postMessage({ type: 'WEBCRAFT_COURSES_UPDATED', data }, '*')
+  }
+}
+
+/**
+ * 從 Supabase 雲端資料庫同步最新教材內容
+ */
+export async function syncCourseDataFromDatabase(): Promise<boolean> {
+  isSyncingCourseData.value = true
+  try {
+    // 1. 優先嘗試專屬之 course_content 資料表
+    try {
+      const { data, error } = await supabase
+        .from('course_content')
+        .select('stages, lessons, updated_at')
+        .eq('id', 'current')
+        .maybeSingle()
+
+      if (!error && data?.lessons && Array.isArray(data.lessons) && data.lessons.length > 0) {
+        stages.value = data.stages || defaultStages
+        lessons.value = data.lessons
+        lastSyncTime.value = data.updated_at || new Date().toISOString()
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
+        broadcastCourseData()
+        return true
+      }
+    } catch {}
+
+    // 2. 備援方案：從 practice_submissions 資料表查詢最新課程資料 (student_id = '__SYSTEM_COURSE_DATA__')
+    const { data: subData, error: subError } = await supabase
+      .from('practice_submissions')
+      .select('code, created_at')
+      .eq('student_id', '__SYSTEM_COURSE_DATA__')
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!subError && subData?.code) {
+      const parsed = JSON.parse(subData.code)
+      if (Array.isArray(parsed.lessons) && parsed.lessons.length > 0) {
+        stages.value = parsed.stages || defaultStages
+        lessons.value = parsed.lessons
+        lastSyncTime.value = subData.created_at || new Date().toISOString()
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
+        broadcastCourseData()
+        return true
+      }
+    }
+  } catch (err) {
+    console.warn('從資料庫同步教材失敗，使用本機快取：', err)
+  } finally {
+    isSyncingCourseData.value = false
+  }
+  return false
+}
+
+/**
+ * 將目前教材內容同步儲存至 Supabase 雲端資料庫
+ */
+export async function saveCourseDataToDatabase(): Promise<{ success: boolean; message: string }> {
+  const payload = {
+    stages: stages.value,
+    lessons: lessons.value,
+  }
+
+  saveCourseData()
+
+  isSyncingCourseData.value = true
+  try {
+    let savedToDedicatedTable = false
+    try {
+      const { error } = await supabase.from('course_content').upsert({
+        id: 'current',
+        stages: payload.stages,
+        lessons: payload.lessons,
+        updated_at: new Date().toISOString(),
+      })
+      if (!error) savedToDedicatedTable = true
+    } catch {}
+
+    // 同步寫入 practice_submissions 確保在未建表時也能即刻儲存
+    const { error: subErr } = await supabase.from('practice_submissions').insert({
+      student_id: '__SYSTEM_COURSE_DATA__',
+      student_name: 'COURSE_DATA',
+      lesson_id: 'current',
+      code: JSON.stringify(payload),
+    })
+
+    if (savedToDedicatedTable || !subErr) {
+      lastSyncTime.value = new Date().toISOString()
+      return { success: true, message: '教材內容已成功儲存至雲端資料庫！' }
+    }
+
+    return { success: false, message: '儲存至資料庫時發生異常，已暫存於本機。' }
+  } catch (err: any) {
+    console.error('儲存教材至資料庫失敗：', err)
+    return { success: false, message: `儲存至資料庫失敗：${err?.message || '未知錯誤'}` }
+  } finally {
+    isSyncingCourseData.value = false
+  }
+}
 
 export function saveCourseData() {
   const data: StoredData = {
@@ -50,11 +162,12 @@ export function saveCourseData() {
     console.error('儲存至 localStorage 失敗', err)
   }
 
-  // 廣播給同頁面監聽者與跨視窗 / iframe
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('webcraft-data-changed', { detail: data }))
-    window.postMessage({ type: 'WEBCRAFT_COURSES_UPDATED', data }, '*')
-  }
+  broadcastCourseData()
+}
+
+// 頁面載入時自動在背景嘗試從資料庫同步最新教材
+if (typeof window !== 'undefined') {
+  syncCourseDataFromDatabase()
 }
 
 // 監聽來自其他視窗（例如 edit.html -> index.html iframe）的 postMessage
@@ -93,7 +206,7 @@ export function addStage(title = '新學習階段'): Stage {
     title,
   }
   stages.value.push(newStage)
-  saveCourseData()
+  saveCourseDataToDatabase()
   return newStage
 }
 
@@ -101,7 +214,7 @@ export function updateStage(id: number, title: string) {
   const target = stages.value.find((s) => s.id === id)
   if (target) {
     target.title = title
-    saveCourseData()
+    saveCourseDataToDatabase()
   }
 }
 
@@ -112,7 +225,7 @@ export function deleteStage(id: number): boolean {
     return false
   }
   stages.value = stages.value.filter((s) => s.id !== id)
-  saveCourseData()
+  saveCourseDataToDatabase()
   return true
 }
 
@@ -162,7 +275,7 @@ export function createEmptyLesson(stageId: number): Lesson {
 
 export function addLesson(lesson: Lesson) {
   lessons.value.push(lesson)
-  saveCourseData()
+  saveCourseDataToDatabase()
 }
 
 export function updateLesson(id: string, updated: Partial<Lesson>) {
@@ -172,20 +285,20 @@ export function updateLesson(id: string, updated: Partial<Lesson>) {
       ...lessons.value[index],
       ...updated,
     }
-    saveCourseData()
+    saveCourseDataToDatabase()
   }
 }
 
 export function deleteLesson(id: string) {
   lessons.value = lessons.value.filter((l) => l.id !== id)
-  saveCourseData()
+  saveCourseDataToDatabase()
 }
 
 // ======================= 系統維護與匯出 =======================
 export function resetToDefault() {
   stages.value = JSON.parse(JSON.stringify(defaultStages))
   lessons.value = JSON.parse(JSON.stringify(defaultLessons))
-  saveCourseData()
+  saveCourseDataToDatabase()
 }
 
 export function importLessonsTs(tsCode: string): { success: boolean; message: string } {
@@ -211,10 +324,10 @@ export function importLessonsTs(tsCode: string): { success: boolean; message: st
     if (Array.isArray(result.stages) && Array.isArray(result.lessons) && result.lessons.length > 0) {
       stages.value = result.stages
       lessons.value = result.lessons
-      saveCourseData()
+      saveCourseDataToDatabase()
       return {
         success: true,
-        message: `成功匯入！共讀取到 ${result.stages.length} 個階段與 ${result.lessons.length} 個單元。`,
+        message: `成功匯入並同步至雲端資料庫！共讀取到 ${result.stages.length} 個階段與 ${result.lessons.length} 個單元。`,
       }
     } else {
       return { success: false, message: '解析失敗：未能從上傳的 .ts 檔案中讀取到合法的 stages 或 lessons 陣列。' }

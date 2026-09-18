@@ -15,6 +15,10 @@ import {
   importLessonsTs,
   generateLessonsTsCode,
   saveCourseData,
+  saveCourseDataToDatabase,
+  syncCourseDataFromDatabase,
+  isSyncingCourseData,
+  lastSyncTime,
 } from './courseStore'
 import { isEditorAuthenticated, verifyEditorPassword, setEditorAuthenticated } from './auth'
 import { COURSE_MEMBERS } from './courseMembers'
@@ -173,6 +177,7 @@ async function loadStudentsFallback() {
     const { data: subs } = await supabase.from('practice_submissions').select('*')
     if (subs) {
       for (const sub of subs) {
+        if (sub.student_id === '__SYSTEM_COURSE_DATA__') continue
         const normId = (sub.student_id || '').toLowerCase()
         let st = memberMap.get(normId)
         if (!st) {
@@ -351,12 +356,46 @@ const previewLoaded = ref(false)
 // 側欄展開或折疊
 const sidebarCollapsed = ref(false)
 
-// 深度監聽目前編輯的內容，自動觸發儲存與 iframe 同步
+// 教材雲端同步狀態
+const courseSaveStatus = ref('')
+let courseAutoSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+async function handleSaveCourseToDb() {
+  courseSaveStatus.value = '正在儲存教材至雲端資料庫...'
+  const res = await saveCourseDataToDatabase()
+  if (res.success) {
+    courseSaveStatus.value = '教材已成功儲存至雲端資料庫！全班學生重新整理即可載入。'
+  } else {
+    courseSaveStatus.value = res.message
+  }
+  setTimeout(() => {
+    courseSaveStatus.value = ''
+  }, 4000)
+}
+
+async function handleReloadCourseFromDb() {
+  courseSaveStatus.value = '正在從雲端資料庫讀取最新教材...'
+  const ok = await syncCourseDataFromDatabase()
+  if (ok) {
+    courseSaveStatus.value = '已成功從雲端資料庫更新最新教材！'
+  } else {
+    courseSaveStatus.value = '目前無法自雲端取得更新，已保持本機內容。'
+  }
+  setTimeout(() => {
+    courseSaveStatus.value = ''
+  }, 4000)
+}
+
+// 深度監聽目前編輯的內容，自動觸發儲存與 iframe 同步，並防抖上傳資料庫
 watch(
   [stages, lessons],
   () => {
     saveCourseData()
     syncToIframe()
+    if (courseAutoSaveTimer) clearTimeout(courseAutoSaveTimer)
+    courseAutoSaveTimer = setTimeout(() => {
+      saveCourseDataToDatabase()
+    }, 2000)
   },
   { deep: true },
 )
@@ -584,7 +623,11 @@ function handleResetDefault() {
           :class="{ active: currentViewMode === 'lessons' }"
           @click="currentViewMode = 'lessons'"
         >
-          📚 教材內容編輯
+          <svg class="btn-svg" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+          </svg>
+          教材內容編輯
         </button>
         <button
           type="button"
@@ -592,56 +635,138 @@ function handleResetDefault() {
           :class="{ active: currentViewMode === 'grades' }"
           @click="switchViewToGrades"
         >
-          👥 學生練習成績與上線管理
+          <svg class="btn-svg" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          學生練習成績與上線管理
         </button>
       </div>
 
       <div class="editor-header-actions">
         <template v-if="currentViewMode === 'lessons'">
           <button class="btn btn-outline" @click="showStageModal = true">
-            🗂️ 階段管理 ({{ stages.length }})
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+            階段管理 ({{ stages.length }})
           </button>
           <button class="btn btn-primary" @click="handleAddLesson">
-            ➕ 新增單元
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            新增單元
+          </button>
+
+          <button class="btn btn-primary" :disabled="isSyncingCourseData" @click="handleSaveCourseToDb" title="將所有課程教材同步儲存至雲端資料庫，跨裝置與全班即刻生效">
+            <svg class="btn-svg" :class="{ 'btn-spin': isSyncingCourseData }" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            {{ isSyncingCourseData ? '雲端儲存中...' : '儲存教材至資料庫' }}
+          </button>
+
+          <button class="btn btn-outline" :disabled="isSyncingCourseData" @click="handleReloadCourseFromDb" :title="lastSyncTime ? `上次同步時間：${new Date(lastSyncTime).toLocaleTimeString()}` : '自雲端重新載入教材'">
+            <svg class="btn-svg" :class="{ 'btn-spin': isSyncingCourseData }" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            雲端重新整理
           </button>
 
           <div class="divider"></div>
 
           <button class="btn btn-secondary" @click="openExportModal">
-            💾 匯出 lessons.ts
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            匯出 lessons.ts
           </button>
           <label class="btn btn-outline file-label" title="選擇本機 lessons.ts 檔案進行匯入">
-            📥 匯入 lessons.ts
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            匯入 lessons.ts
             <input type="file" accept=".ts,.js" style="display: none" @change="handleImportTs" />
           </label>
           <button class="btn btn-danger-outline" @click="handleResetDefault">
-            ↺ 還原預設
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+            還原預設
           </button>
         </template>
 
         <template v-else-if="currentViewMode === 'grades'">
           <button class="btn btn-primary" :disabled="isSavingAll" @click="saveAllDirtyStudents">
-            💾 儲存修改 ({{ studentsList.filter(s => s.isDirty).length }})
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            儲存修改 ({{ studentsList.filter(s => s.isDirty).length }})
           </button>
           <button class="btn btn-secondary" @click="exportStudentsCsv">
-            📥 匯出成績 CSV
+            <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            匯出成績 CSV
           </button>
           <button class="btn btn-outline" :disabled="isLoadingStudents" @click="loadStudentsData">
-            🔄 {{ isLoadingStudents ? '載入中...' : '重新整理' }}
+            <svg class="btn-svg" :class="{ 'btn-spin': isLoadingStudents }" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+            {{ isLoadingStudents ? '載入中...' : '重新整理' }}
           </button>
         </template>
 
         <div class="divider"></div>
 
         <button class="btn btn-outline" title="鎖定編輯器" @click="handleLock">
-          🔒 鎖定
+          <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          鎖定
         </button>
 
         <a :href="baseUrl" target="_blank" class="btn btn-link">
-          👀 開啟學習頁面 ↗
+          <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          開啟學習頁面
         </a>
       </div>
     </header>
+
+    <!-- 教材雲端儲存成功通知 Toast -->
+    <transition name="fade">
+      <div v-if="courseSaveStatus" class="course-save-toast" role="status">
+        <svg class="btn-svg" viewBox="0 0 24 24" width="16" height="16" stroke="#16a34a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span>{{ courseSaveStatus }}</span>
+      </div>
+    </transition>
 
     <!-- 主工作區：教材編輯雙欄分割 -->
     <div v-if="currentViewMode === 'lessons'" class="editor-split-body">
@@ -1096,14 +1221,23 @@ function handleResetDefault() {
       <!-- 儲存成功提示通知 -->
       <transition name="fade">
         <div v-if="saveSuccessMessage" class="grades-save-alert" role="status">
-          ✨ {{ saveSuccessMessage }}
+          <svg class="btn-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+          {{ saveSuccessMessage }}
         </div>
       </transition>
 
       <!-- 學生名單與成績數據表格 -->
       <div class="grades-table-wrapper">
         <div v-if="isLoadingStudents" class="grades-loading-state">
-          <span>⏳ 正在載入學生名單與資料庫成績...</span>
+          <span>
+            <svg class="btn-svg btn-spin" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+            </svg>
+            正在載入學生名單與成績資料...
+          </span>
         </div>
         <table v-else class="grades-data-table">
           <thead>
@@ -1191,14 +1325,26 @@ function handleResetDefault() {
                     :disabled="!st.isDirty"
                     @click="saveStudent(st)"
                   >
-                    💾 儲存
+                    <svg class="btn-svg" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    儲存
                   </button>
                   <button
                     class="btn btn-sm btn-outline"
                     @click="openStudentDetail(st)"
                     title="查看該學生詳細作答與各題評分"
                   >
-                    📝 細項
+                    <svg class="btn-svg" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                      <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                    細項
                   </button>
                 </div>
               </td>
@@ -1216,7 +1362,12 @@ function handleResetDefault() {
             <span class="section-kicker">學生詳細成績管理</span>
             <h3>【{{ selectedDetailStudent.name }} ({{ selectedDetailStudent.studentId }})】各單元評分與記錄</h3>
           </div>
-          <button class="modal-close" @click="selectedDetailStudent = null">✕</button>
+          <button class="modal-close" @click="selectedDetailStudent = null">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
         <div class="modal-body">
           <div class="detail-overview-bar">

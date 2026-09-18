@@ -186,3 +186,27 @@ CREATE POLICY "Anyone can update course members"
   USING (true)
   WITH CHECK (true);
 
+-- 課程教材內容儲存資料表 (提供管理員模式直接於雲端修改教材)
+CREATE TABLE IF NOT EXISTS course_content (
+  id VARCHAR(40) PRIMARY KEY,
+  stages JSONB NOT NULL,
+  lessons JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE course_content ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Anyone can read course content" ON course_content;
+CREATE POLICY "Anyone can read course content"
+  ON course_content FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+DROP POLICY IF EXISTS "Anyone can insert or update course content" ON course_content;
+CREATE POLICY "Anyone can insert or update course content"
+  ON course_content FOR ALL
+  TO anon, authenticated
+  USING (true)
+  WITH CHECK (true);
+
+

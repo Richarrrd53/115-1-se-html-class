@@ -207,8 +207,8 @@ function toggleComplete() {
     completedLessons.value = { ...completedLessons.value, [lesson.value.id]: completed }
     syncPractice(completed)
     submissionMessage.value = completed
-      ? '已標記為完成並成功存入資料庫！'
-      : '已取消完成狀態並更新至資料庫。'
+      ? '已成功標記為完成！'
+      : '已取消完成標記。'
   }
 }
 
@@ -239,6 +239,7 @@ async function refreshPracticeStudents() {
       .from('practice_submissions')
       .select('student_name')
       .eq('lesson_id', lesson.value.id)
+      .neq('student_id', '__SYSTEM_COURSE_DATA__')
       .order('created_at', { ascending: false })
     if (error) throw error
     practiceStudents.value = [...new Set((data ?? []).map((student) => student.student_name))]
@@ -282,11 +283,21 @@ const previewDocument = computed(() => `<!doctype html>
     <!-- 歡迎訊息 Toast -->
     <transition name="fade">
       <div v-if="welcomeMessage" class="welcome-toast" role="status" aria-live="polite">
-        <div class="welcome-toast-icon">✨</div>
+        <div class="welcome-toast-icon">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          </svg>
+        </div>
         <div class="welcome-toast-content">
           <strong>{{ welcomeMessage }}</strong>
         </div>
-        <button class="welcome-toast-close" type="button" @click="welcomeMessage = ''" aria-label="關閉歡迎訊息">✕</button>
+        <button class="welcome-toast-close" type="button" @click="welcomeMessage = ''" aria-label="關閉歡迎訊息">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
     </transition>
 
@@ -299,7 +310,7 @@ const previewDocument = computed(() => `<!doctype html>
           </div>
         </div>
         <div class="modal-body student-profile-body">
-          <p>請輸入選課名單中的學號與姓名以開始練習，系統將驗證你的修課身分。</p>
+          <p>請輸入你的學號與姓名以開始練習</p>
           <label for="student-id">學號</label>
           <input
             id="student-id"
@@ -347,14 +358,28 @@ const previewDocument = computed(() => `<!doctype html>
           @click="showStudentProfileModal = true"
           :title="'目前身分：' + (studentName || '未驗證') + ' (' + (studentId || '點擊驗證') + ') - 點擊可變更'"
         >
-          <span class="badge-icon">🎓</span>
+          <svg class="badge-icon-svg" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+            <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
           <span class="badge-text">{{ studentName ? `${studentName} (${studentId})` : '點此驗證身分' }}</span>
         </button>
         <span>{{ practiceStudents.length }} 位同學練習中</span>
-        <small v-if="practiceSyncError" class="error">API 未連線</small>
       </div>
-      <button class="ghost-button" @click="chooseLesson(lessons[0].id)">⌂ 回到總覽</button>
-      <a :href="`${baseUrl}edit.html`" class="edit-nav-button" title="開啟管理員控制台（成績與教材管理）">⚙️ 管理員模式</a>
+      <button class="ghost-button" @click="chooseLesson(lessons[0].id)">
+        <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        回到總覽
+      </button>
+      <a :href="`${baseUrl}edit.html`" class="edit-nav-button" title="開啟管理員控制台（成績與教材管理）">
+        <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        管理員模式
+      </a>
     </header>
 
     <div class="workspace">
@@ -371,7 +396,11 @@ const previewDocument = computed(() => `<!doctype html>
           >
             <span class="lesson-number">{{ item.number }}</span>
             <span>{{ item.title }}</span>
-            <span v-if="completedLessons[item.id]" class="done">✓</span>
+            <span v-if="completedLessons[item.id]" class="done">
+              <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </span>
           </button>
         </div>
       </aside>
@@ -405,7 +434,13 @@ const previewDocument = computed(() => `<!doctype html>
         <section class="challenge-card">
           <div class="challenge-intro">
             <div><span class="section-kicker">實作練習</span><h2>動手做做看</h2><div class="challenge-instructions markdown-content" v-html="renderMarkdown(practice.instructions)"></div></div>
-            <button class="reset-button" @click="resetCode">↻ 重設程式碼</button>
+            <button class="reset-button" @click="resetCode">
+              <svg class="btn-svg" viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              </svg>
+              重設程式碼
+            </button>
           </div>
 
           <!-- AI 佇列排隊提示訊息 -->
@@ -416,32 +451,51 @@ const previewDocument = computed(() => `<!doctype html>
             </div>
           </transition>
 
-          <!-- AI 審核通過卡片 -->
+          <!-- 審核通過卡片 -->
           <transition name="fade">
             <div v-if="aiResult?.passed" class="ai-success-card" role="alert">
               <div class="success-top">
-                <span class="success-trophy">🏆</span>
+                <span class="success-icon-svg">
+                  <svg viewBox="0 0 24 24" width="22" height="22" stroke="#16a34a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  </svg>
+                </span>
                 <div>
                   <h3 class="success-title">實作核對通過！得分：<span class="score-highlight">{{ aiResult.score }} / 100 分</span></h3>
                   <p class="success-summary">{{ aiResult.summary }}</p>
                 </div>
               </div>
-              <p v-if="aiResult.feedback" class="success-feedback">💡 學習回饋：{{ aiResult.feedback }}</p>
+              <p v-if="aiResult.feedback" class="success-feedback">學習回饋：{{ aiResult.feedback }}</p>
             </div>
           </transition>
 
-          <!-- AI 審核未通過（紅色標註卡片） -->
+          <!-- 審核未通過（紅色標註卡片） -->
           <transition name="fade">
             <div v-if="aiResult && !aiResult.passed" class="ai-failure-card" role="alert">
               <div class="failure-top">
-                <span class="failure-tag">⚠️ 尚未通過（目前得分：{{ aiResult.score }} 分）</span>
+                <span class="failure-tag">
+                  <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  尚未通過（目前得分：{{ aiResult.score }} 分）
+                </span>
                 <p class="failure-summary">{{ aiResult.summary }}</p>
               </div>
               <div v-if="aiResult.errors?.length" class="failure-error-list">
                 <div v-for="(err, idx) in aiResult.errors" :key="idx" class="failure-error-item">
-                  <div class="failure-error-badge">❌ {{ err.panel.toUpperCase() }} 錯誤<span v-if="err.line">（第 {{ err.line }} 行）</span></div>
+                  <div class="failure-error-badge">
+                    <svg class="btn-svg" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="15" y1="9" x2="9" y2="15"></line>
+                      <line x1="9" y1="9" x2="15" y2="15"></line>
+                    </svg>
+                    {{ err.panel.toUpperCase() }} 待修正<span v-if="err.line">（第 {{ err.line }} 行）</span>
+                  </div>
                   <div class="failure-error-text">{{ err.message }}</div>
-                  <div v-if="err.suggestion" class="failure-suggestion-text">💡 建議修正：{{ err.suggestion }}</div>
+                  <div v-if="err.suggestion" class="failure-suggestion-text">建議修正：{{ err.suggestion }}</div>
                 </div>
               </div>
               <p v-if="aiResult.feedback" class="failure-feedback-text">{{ aiResult.feedback }}</p>
@@ -471,11 +525,15 @@ const previewDocument = computed(() => `<!doctype html>
               <!-- 當前面板紅色行內錯誤提醒卡 -->
               <div v-if="activePanelErrors.length > 0" class="panel-errors-callout">
                 <div v-for="(err, idx) in activePanelErrors" :key="idx" class="callout-error-row">
-                  <span class="callout-error-icon">❌</span>
+                  <svg class="callout-error-svg" viewBox="0 0 24 24" width="13" height="13" stroke="#ef4444" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
                   <div class="callout-error-content">
                     <strong v-if="err.line">第 {{ err.line }} 行：</strong>
                     <span>{{ err.message }}</span>
-                    <div v-if="err.suggestion" class="callout-hint">👉 提示：{{ err.suggestion }}</div>
+                    <div v-if="err.suggestion" class="callout-hint">提示：{{ err.suggestion }}</div>
                   </div>
                 </div>
               </div>
@@ -486,7 +544,7 @@ const previewDocument = computed(() => `<!doctype html>
             </div>
           </div>
           <div class="challenge-actions">
-            <!-- 驗證答案按鈕（原全部按鈕移除，改為此按鈕，不顯示 gemini） -->
+            <!-- 驗證答案按鈕 -->
             <button
               class="ai-verify-btn"
               :disabled="isAiVerifying"
@@ -494,19 +552,30 @@ const previewDocument = computed(() => `<!doctype html>
               @click="runAiVerification"
               title="驗證答案並進行評分"
             >
-              <span v-if="isAiVerifying" class="spinner-icon">⏳</span>
-              <span v-else>🔍</span>
-              {{ isAiVerifying ? '驗證中...' : '驗證答案' }}
+              <svg v-if="isAiVerifying" class="btn-svg btn-spin" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+              </svg>
+              <svg v-else class="btn-svg" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <span>{{ isAiVerifying ? '驗證中...' : '驗證答案' }}</span>
             </button>
 
-            <!-- 至少送出 1 次後才出現：查看參考答案、標記完成狀態(存入資料庫) -->
+            <!-- 至少送出 1 次後才出現：查看參考答案、標記為完成 -->
             <template v-if="hasSubmittedAtLeastOnce">
               <button
                 class="answer-button"
                 type="button"
                 @click="showAnswer = !showAnswer"
               >
-                {{ showAnswer ? '隱藏參考答案' : '查看參考答案' }} <span>⌄</span>
+                <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <path v-if="!showAnswer" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                  <circle v-if="!showAnswer" cx="12" cy="12" r="3"></circle>
+                  <path v-if="showAnswer" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                  <line v-if="showAnswer" x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+                <span>{{ showAnswer ? '隱藏參考答案' : '查看參考答案' }}</span>
               </button>
               <button
                 class="complete-button"
@@ -514,7 +583,10 @@ const previewDocument = computed(() => `<!doctype html>
                 type="button"
                 @click="toggleComplete"
               >
-                {{ isCurrentComplete ? '已完成 (存入資料庫) ✓' : '標記完成狀態 (存入資料庫)' }}
+                <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <span>{{ isCurrentComplete ? '已標記完成' : '標記為完成' }}</span>
               </button>
             </template>
           </div>
@@ -529,8 +601,13 @@ const previewDocument = computed(() => `<!doctype html>
         </section>
 
         <div class="navigation">
-          <span></span>
-          <button class="next-button" @click="goToNextLesson" :disabled="isLastLesson">下一個主題 <span>→</span></button>
+          <button class="next-button" @click="goToNextLesson" :disabled="isLastLesson">
+            <span>下一個主題</span>
+            <svg class="btn-svg btn-svg-arrow" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
         </div>
       </main>
     </div>
