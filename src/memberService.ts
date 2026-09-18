@@ -4,6 +4,7 @@ import {
   normalizeName,
   normalizeStudentId,
   findLocalMember,
+  COURSE_MEMBERS,
 } from './courseMembers'
 
 export interface VerificationResult {
@@ -14,12 +15,14 @@ export interface VerificationResult {
 
 export const ERROR_NOT_IN_COURSE = '錯誤！你目前沒有在課程中，請檢查你的學號/姓名是否正確！'
 
+// 記錄 course_members 資料表是否可用（避免反覆觸發 404 請求）
+let courseMembersTableAvailable: boolean | null = null
+
 /**
  * 驗證學號與姓名是否在課程成員資料庫中。
- * 支援三層驗證：
- * 1. Supabase 資料庫 (course_members 資料表)
- * 2. 本地後端 API (/api/members/verify)
- * 3. 離線完整成員名單備援 (75 位成員)
+ * 驗證順序：
+ * 1. 本地靜態名冊（優先，Vercel 靜態環境最可靠，完整 75 位成員均已內建）
+ * 2. Supabase course_members 資料表（若確認資料表存在才查詢，否則略過）
  */
 export async function verifyCourseMember(
   studentId: string,
@@ -35,62 +38,7 @@ export async function verifyCourseMember(
     }
   }
 
-  // 1. 嘗試由 Supabase course_members 查詢
-  try {
-    const { data, error } = await supabase
-      .from('course_members')
-      .select('student_id, name, email')
-      .eq('student_id', normId)
-      .maybeSingle()
-
-    if (!error && data) {
-      if (normalizeName(data.name) === normName) {
-        return {
-          valid: true,
-          member: {
-            studentId: data.student_id,
-            name: data.name,
-            email: data.email,
-          },
-        }
-      } else {
-        return {
-          valid: false,
-          error: ERROR_NOT_IN_COURSE,
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Supabase course_members 查詢失敗或尚未建表，切換至備援驗證機制：', err)
-  }
-
-  // 2. 嘗試呼叫本地後端 API
-  try {
-    const res = await fetch('/api/members/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentId: normId, name }),
-    })
-    if (res.ok) {
-      const result = await res.json()
-      if (result.valid) {
-        return {
-          valid: true,
-          member: result.member,
-        }
-      }
-      if (result.error) {
-        return {
-          valid: false,
-          error: ERROR_NOT_IN_COURSE,
-        }
-      }
-    }
-  } catch {
-    // 後端未啟動或離線模式
-  }
-
-  // 3. 離線/靜態名冊備援比對
+  // 1. 優先查詢本地靜態名冊（在 Vercel 靜態環境最可靠，無需任何網路請求）
   const localMatch = findLocalMember(normId, normName)
   if (localMatch) {
     return {
@@ -99,9 +47,58 @@ export async function verifyCourseMember(
     }
   }
 
-  // 檢查是否學號存在但姓名不符，或完全不存在
+  // 若學號在本地名冊中存在但姓名不符，直接返回錯誤（避免不必要的網路請求）
+  const idExistsLocally = COURSE_MEMBERS.some(
+    (m) => normalizeStudentId(m.studentId) === normId,
+  )
+  if (idExistsLocally) {
+    return {
+      valid: false,
+      error: ERROR_NOT_IN_COURSE,
+    }
+  }
+
+  // 2. 嘗試由 Supabase course_members 查詢（僅在確認資料表可用時才查，避免觸發 404）
+  if (courseMembersTableAvailable !== false) {
+    try {
+      const { data, error } = await supabase
+        .from('course_members')
+        .select('student_id, name, email')
+        .eq('student_id', normId)
+        .maybeSingle()
+
+      if (error) {
+        // 若資料表不存在（404）則標記為不可用，後續不再查詢
+        courseMembersTableAvailable = false
+      } else {
+        courseMembersTableAvailable = true
+        if (data) {
+          if (normalizeName(data.name) === normName) {
+            return {
+              valid: true,
+              member: {
+                studentId: data.student_id,
+                name: data.name,
+                email: data.email,
+              },
+            }
+          } else {
+            return {
+              valid: false,
+              error: ERROR_NOT_IN_COURSE,
+            }
+          }
+        }
+      }
+    } catch {
+      courseMembersTableAvailable = false
+    }
+  }
+
+  // 學號在本地及資料庫均查無此人
   return {
     valid: false,
     error: ERROR_NOT_IN_COURSE,
   }
 }
+
