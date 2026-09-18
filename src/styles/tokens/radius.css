@@ -1,0 +1,15 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Corner Radius System
+   ============================================================ */
+
+:root {
+  --radius-xs:     4px;   /* Micro tags, status chips */
+  --radius-sm:     8px;   /* Small pills, code tags */
+  --radius-md:     12px;  /* Standard cards, popovers, dropdowns */
+  --radius-lg:     18px;  /* Main challenge container, code editor */
+  --radius-xl:     24px;  /* Modal dialogs, floating panels */
+  --radius-2xl:    32px;  /* Large hero capsule */
+  --radius-pill:   999px; /* Buttons, search inputs, tabs */
+  --radius-circle: 50%;   /* Avatars, round action icons */
+}

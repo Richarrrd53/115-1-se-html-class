@@ -169,16 +169,16 @@ async function fallbackLocalEvaluate(
               errors.push({
                 panel: 'html',
                 line: item.line,
-                message: `標籤 <${item.tag}> 似乎未正確閉合`,
-                suggestion: `請在適當位置加上 </${item.tag}>。`,
+                message: `標籤 \`<${item.tag}>\` 似乎未正確閉合`,
+                suggestion: `請在適當位置加上 \`</${item.tag}>\`。`,
               })
             }
           } else {
             errors.push({
               panel: 'html',
               line: lineIndex + 1,
-              message: `發現多餘或未匹配的閉合標籤 </${tagName}>`,
-              suggestion: `請檢查是否有遺漏開啟標籤 <${tagName}>，或刪除多餘的 </${tagName}>。`,
+              message: `發現多餘或未匹配的閉合標籤 \`</${tagName}>\``,
+              suggestion: `請檢查是否有遺漏開啟標籤 \`<${tagName}>\`，或刪除多餘的 \`</${tagName}>\`。`,
             })
           }
         }
@@ -195,8 +195,8 @@ async function fallbackLocalEvaluate(
       errors.push({
         panel: 'html',
         line: unclosed.line,
-        message: `標籤 <${unclosed.tag}> 尚未閉合`,
-        suggestion: `請在該元素結尾加上 </${unclosed.tag}> 結束標籤。`,
+        message: `標籤 \`<${unclosed.tag}>\` 尚未閉合`,
+        suggestion: `請在該元素結尾加上 \`</${unclosed.tag}>\` 結束標籤。`,
       })
     }
   }
@@ -224,18 +224,16 @@ async function fallbackLocalEvaluate(
         isPassed = /<main(\s+[^>]*)?>/i.test(html)
       } else if (itemLower.includes('footer')) {
         isPassed = /<footer(\s+[^>]*)?>/i.test(html)
-      } else if (itemLower.includes('article')) {
-        isPassed = /<article(\s+[^>]*)?>/i.test(html)
-      } else if (itemLower.includes('section')) {
-        isPassed = /<section(\s+[^>]*)?>/i.test(html)
+      } else if (itemLower.includes('article') || itemLower.includes('section')) {
+        isPassed = /<(article|section)(\s+[^>]*)?>/i.test(html)
       } else if (itemLower.includes('aside')) {
         isPassed = /<aside(\s+[^>]*)?>/i.test(html)
       } else if (itemLower.includes('table') || itemLower.includes('表格')) {
         isPassed = /<table(\s+[^>]*)?>/i.test(html)
       } else if (itemLower.includes('form') || itemLower.includes('表單')) {
         isPassed = /<form(\s+[^>]*)?>/i.test(html)
-      } else if (itemLower.includes('h1') || itemLower.includes('主標題')) {
-        isPassed = /<h1(\s+[^>]*)?>/i.test(html)
+      } else if (itemLower.includes('h1') || itemLower.includes('主標題') || itemLower.includes('標題')) {
+        isPassed = /<h[1-6](\s+[^>]*)?>/i.test(html)
       } else if (itemLower.includes('css') || itemLower.includes('樣式')) {
         isPassed = css.trim().length > 10 || /<style(\s+[^>]*)?>[\s\S]+<\/style>/i.test(html)
       } else if (itemLower.includes('javascript') || itemLower.includes('js') || itemLower.includes('點擊')) {
@@ -256,8 +254,8 @@ async function fallbackLocalEvaluate(
         if (targetTag) {
           errors.push({
             panel: 'html',
-            message: `尚未包含必要元素 <${targetTag}>`,
-            suggestion: `請根據要求加入 <${targetTag}> 標籤：${item}`,
+            message: `尚未包含必要元素 \`<${targetTag}>\``,
+            suggestion: `請根據要求加入 \`<${targetTag}>\` 標籤：${item}`,
           })
         }
       }
@@ -280,21 +278,22 @@ async function fallbackLocalEvaluate(
   let summary = ''
   let feedback = ''
 
-  if (syntaxErrorsCount === 0 && passRatio >= 0.8) {
+  if (syntaxErrorsCount === 0 && passRatio >= 1.0) {
+    score = 100
     passed = true
-    score = Math.min(100, Math.round(85 + passRatio * 15))
-    summary = `恭喜通過練習！程式碼結構完整，要求達成度 ${Math.round(passRatio * 100)}%。`
-    feedback = '你的 HTML 標籤層級與語意規範編寫得十分標準，表現非常優秀！請繼續保持！'
-  } else if (passRatio >= 0.5) {
-    passed = false
-    score = Math.round(50 + passRatio * 25)
-    summary = `部分項目尚待完成（達成度 ${Math.round(passRatio * 100)}%），請參考提示進行微調。`
-    feedback = '已經完成大部分的核心架構囉！請查看左側清單中尚未打勾的項目與代碼提示，補齊後即可通過！'
+    summary = '恭喜你！你的實作完全符合題目要求，獲得滿分 100 分！'
+    feedback = '你的語意結構非常規範，程式碼整潔，表現十分優秀，請繼續保持！'
+  } else if (syntaxErrorsCount === 0 && passRatio >= 0.6) {
+    // 些許錯誤斟酌扣分，滿 60 分即可通過
+    score = Math.min(95, Math.round(60 + passRatio * 35))
+    passed = score >= 60
+    summary = `你已達成大部分題目要求（得分：${score} 分），順利通過驗證！`
+    feedback = '很棒！你已經掌握了核心概念，若能微調未達成的細節會更加完美喔～'
   } else {
-    passed = false
-    score = Math.max(20, Math.round(passRatio * 50))
-    summary = '程式碼尚未完全符合題目要求，請對照練習指引逐步完成。'
-    feedback = '不要氣餒，建議回顧本單元的範例代碼，或點擊「查看參考答案」學習標準結構，再嘗試實作！'
+    score = Math.max(10, Math.round(passRatio * 55))
+    passed = score >= 60
+    summary = `部分項目尚待完成（得分：${score} 分），請參考下方提示進行調整喔！`
+    feedback = '不要氣餒，建議回顧單元說明的語法示範，對照檢核項目一步步嘗試，一定能成功解決！'
   }
 
   const result: AiVerificationResult = {
@@ -313,11 +312,30 @@ async function fallbackLocalEvaluate(
   return result
 }
 
-async function recordSubmissionToSupabase(
+export function getTaiwanTimeString(date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat('zh-TW', {
+      timeZone: 'Asia/Taipei',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date)
+  } catch {
+    return new Date().toLocaleString('zh-TW', { hour12: false })
+  }
+}
+
+export async function recordSubmissionToSupabase(
   payload: VerifyPracticePayload,
   result: AiVerificationResult,
 ) {
   try {
+    const taiwanTime = getTaiwanTimeString()
+
     // 1. 優先嘗試寫入全欄位
     const { error } = await supabase.from('practice_submissions').insert({
       student_id: payload.studentId,
@@ -327,6 +345,7 @@ async function recordSubmissionToSupabase(
       completed: result.passed,
       score: result.score,
       ai_feedback: `${result.summary}\n${result.feedback || ''}`,
+      submitted_at_tw: taiwanTime,
     })
 
     // 2. 若資料表尚未擴展欄位（PGRST204 400 Bad Request），退回基本欄位並將成績存入 code.__meta
@@ -341,8 +360,12 @@ async function recordSubmissionToSupabase(
             completed: result.passed,
             score: result.score,
             ai_feedback: `${result.summary}\n${result.feedback || ''}`,
+            submitted_at_tw: taiwanTime,
           },
         }),
+        completed: result.passed,
+        score: result.score,
+        ai_feedback: `${result.summary}\n${result.feedback || ''}`,
       })
     }
   } catch {

@@ -1,0 +1,55 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Layer 3: Component Tokens
+   ============================================================ */
+
+:root {
+  /* ── Button Component Tokens ── */
+  --button-primary-bg:           linear-gradient(135deg, var(--blue-500), var(--blue-600));
+  --button-primary-text:         var(--white);
+  --button-primary-hover-bg:     linear-gradient(135deg, var(--blue-600), var(--blue-700));
+  --button-primary-hover-shadow: var(--shadow-brand-glow);
+  --button-secondary-bg:         var(--slate-100);
+  --button-secondary-text:       var(--color-text-primary);
+  --button-secondary-hover-bg:   var(--slate-200);
+  --button-ghost-bg:             transparent;
+  --button-ghost-text:           var(--color-text-secondary);
+  --button-ghost-border:         var(--color-border-default);
+  --button-ghost-hover-bg:       var(--slate-100);
+  --button-danger-bg:            var(--red-500);
+  --button-danger-text:          var(--white);
+
+  /* ── Card Component Tokens ── */
+  --card-bg:                     var(--color-surface-primary);
+  --card-border:                 var(--color-border-default);
+  --card-shadow:                 var(--elevation-1);
+  --card-hover-shadow:           var(--elevation-2);
+  --card-radius:                 var(--radius-md);
+
+  /* ── Form Input Tokens ── */
+  --input-bg:                    var(--color-surface-primary);
+  --input-border:                var(--color-border-default);
+  --input-border-focus:          var(--color-border-focus);
+  --input-radius-pill:           var(--radius-pill);
+  --input-radius-rect:           var(--radius-sm);
+  --input-shadow-focus:          0 0 0 3px rgba(37, 99, 235, 0.15);
+
+  /* ── 3D Matte Acrylic Floating Surfaces (from StoryboardAI2) ── */
+  --surface-floating-bg:         linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 250, 252, 0.86) 100%);
+  --surface-floating-border:     1px solid rgba(255, 255, 255, 0.85);
+  --surface-floating-blur:       blur(16px) saturate(130%);
+  --surface-floating-shadow:     0 16px 36px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.03);
+  --surface-floating-highlight:  inset 0 1.5px 2px rgba(255, 255, 255, 0.95), inset 0 -1.5px 3px rgba(120, 130, 150, 0.05);
+
+  /* ── Editor Tokens ── */
+  --editor-bg:                   var(--slate-900);
+  --editor-tab-bg:               var(--slate-800);
+  --editor-tab-active-bg:        var(--slate-900);
+  --editor-border:               #1e293b;
+  --editor-text:                 #e2e8f0;
+  --editor-font:                 var(--font-family-mono);
+
+  /* ── Skeleton Pulse Token ── */
+  --skeleton-base:               #e2e8f0;
+  --skeleton-highlight:          #f8fafc;
+}

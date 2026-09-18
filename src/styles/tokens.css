@@ -1,0 +1,41 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Master Design Tokens Aggregator
+   ============================================================ */
+
+/* ── 1. Layer 1: Primitive Tokens ── */
+@import url('./tokens/primitives.css');
+
+/* ── 2. Layer 2: Semantic Tokens ── */
+@import url('./tokens/colors.css');
+
+/* ── 3. Foundations & Scales ── */
+@import url('./tokens/typography.css');
+@import url('./tokens/radius.css');
+@import url('./tokens/border.css');
+@import url('./tokens/shadow.css');
+@import url('./tokens/blur.css');
+@import url('./tokens/motion.css');
+
+/* ── 4. Layer 3: Component Tokens ── */
+@import url('./tokens/components.css');
+
+/* ============================================================
+   LEGACY VARIABLE ALIASES (Backward Compatibility)
+   ============================================================ */
+:root {
+  --primary:         var(--color-brand-primary);
+  --primary-light:   var(--color-brand-primary-light);
+  --primary-soft:    var(--color-brand-primary-soft);
+
+  --text-dark:       var(--color-text-primary);
+  --text-mid:        var(--color-text-secondary);
+  --text-light:      var(--color-text-muted);
+  --text-muted:      var(--color-text-tertiary);
+
+  --card-bg:         var(--color-surface-primary);
+  --card-border:     var(--color-border-default);
+  --bg-dark:         var(--color-surface-dark);
+  --off-white:       var(--color-bg-page);
+  --shadow-soft:     var(--elevation-1);
+}

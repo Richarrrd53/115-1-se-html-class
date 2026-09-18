@@ -23,6 +23,7 @@ import {
 import { isEditorAuthenticated, verifyEditorPassword, setEditorAuthenticated } from './auth'
 import { COURSE_MEMBERS } from './courseMembers'
 import { supabase } from './supabase'
+import MathCurveLoader from './components/MathCurveLoader.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 
@@ -1264,13 +1265,12 @@ function handleResetDefault() {
 
       <!-- 學生名單與成績數據表格 -->
       <div class="grades-table-wrapper">
-        <div v-if="isLoadingStudents" class="grades-loading-state">
-          <span>
-            <svg class="btn-svg btn-spin" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-            </svg>
-            正在載入學生名單與成績資料...
-          </span>
+        <div v-if="isLoadingStudents" class="grades-loading-state" style="padding: 56px 20px; display: flex; justify-content: center;">
+          <MathCurveLoader
+            size="md"
+            label="正在載入學生名單與即時作答數據..."
+            subtext="正在同步 Supabase 雲端資料庫最新成績與上線記錄"
+          />
         </div>
         <table v-else class="grades-data-table">
           <thead>

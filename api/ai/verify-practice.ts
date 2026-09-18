@@ -24,7 +24,10 @@ function buildPrompt(data: Record<string, any>): string {
     checklistStatus: [{ text: 'string', passed: 'boolean' }],
   })
   return [
-    '你是一位專業、友善且嚴謹的前端教學助理。請評估學生在以下互動練習中的作答成果。',
+    '你是一位專業、親切且富有同理心的前端程式設計專屬導師。你正在一對一指導學生完成實作練習。',
+    '',
+    '【重要稱謂與視角規範】：',
+    '所有評語、摘要、錯誤訊息與建議（summary、feedback、errors[].message、errors[].suggestion），主詞必須一律使用「你」（第二人稱），直接對學生說話。絕對不要出現「學生」、「該生」、「學生提交的程式碼」等第三人稱！',
     '',
     '【課程與題目資訊】',
     `單元名稱：${data.lessonTitle || ''}`,
@@ -36,26 +39,36 @@ function buildPrompt(data: Record<string, any>): string {
     cl,
     '',
     '【題目初始代碼（Starter Code）】：',
-    `HTML:\n```html\n${sc.html || ''}\n````,
-    `CSS:\n```css\n${sc.css || ''}\n````,
-    `JavaScript:\n```js\n${sc.js || ''}\n````,
+    `HTML:\n\`\`\`html\n${sc.html || ''}\n\`\`\``,
+    `CSS:\n\`\`\`css\n${sc.css || ''}\n\`\`\``,
+    `JavaScript:\n\`\`\`js\n${sc.js || ''}\n\`\`\``,
     '',
     '【預期標準參考解答（Expected Answer）】：',
-    `HTML:\n```html\n${ac.html || ''}\n````,
-    `CSS:\n```css\n${ac.css || ''}\n````,
-    `JavaScript:\n```js\n${ac.js || ''}\n````,
+    `HTML:\n\`\`\`html\n${ac.html || ''}\n\`\`\``,
+    `CSS:\n\`\`\`css\n${ac.css || ''}\n\`\`\``,
+    `JavaScript:\n\`\`\`js\n${ac.js || ''}\n\`\`\``,
     '',
-    '【學生目前提交之代碼（Student Code）】：',
-    `HTML:\n```html\n${stu.html || ''}\n````,
-    `CSS:\n```css\n${stu.css || ''}\n````,
-    `JavaScript:\n```js\n${stu.js || ''}\n````,
+    '【你目前提交之代碼（Student Code）】：',
+    `HTML:\n\`\`\`html\n${stu.html || ''}\n\`\`\``,
+    `CSS:\n\`\`\`css\n${sc.css || ''}\n\`\`\``,
+    `JavaScript:\n\`\`\`js\n${sc.js || ''}\n\`\`\``,
     '',
-    '【評估規則】：',
-    '1. 嚴格檢查學生的代碼是否滿足題目指示、各項 Checklist 以及關鍵標籤/樣式/邏輯。',
-    '2. 若學生完全達成題目要求：passed 設為 true，score 給予 85 到 100 分，errors 陣列可為空 []。',
-    '3. 若學生未達成題目要求或有語法/規格錯誤：passed 設為 false，score 給予 0 到 79 分，errors 必須清楚列出具體錯誤（panel/line/message/suggestion）。',
-    '4. 必須同時評估 Checklist 中的每一項是否達成。',
-    '5. 必須以純 JSON 格式回傳，請勿夾帶任何 markdown 程式碼區塊外綴。',
+    '【打分標準與評核規則（寬容評分、鼓勵優先）】：',
+    '1. 【未修改初始代碼】：若你提交的代碼與題目初始代碼（Starter Code）完全相同或實質為空，評 0 分，passed 為 false。summary 請明確寫：「你尚未修改初始程式碼，請依照題目指示開始動手練習！」，feedback 給予鼓勵指引。',
+    '2. 【大幅放寬評分標準，不要因非必要標籤扣分（極重要）】：',
+    '   - 題目中若提及多個語意化標籤（例如「header、nav、main、section、article、footer」），這些通常是本單元介紹的標籤庫，絕非要求你必須把每一個標籤都硬塞進程式碼中！',
+    '   - 只要你成功將原本程式碼中的主要 div 替換為對應的合理語意標籤（例如 top 換成 header、bottom 換成 footer、post 換成 article 或 section、外面包 main），就屬於非常出色的實作，必須給予 85 到 100 分的高分，且 passed 必須為 true！',
+    '   - 絕對不要因為代碼中缺少 <nav> 而扣分！因為原始題目本身就沒有導覽列內容。',
+    '   - 絕對不要因為沒有同時使用 <section> 與 <article>、或沒有在 article 外面再包 section 而扣分！兩者擇一合理使用即可。',
+    '   - 絕對不要因為標題使用 <h2>、<h3> 而非 <h1> 而扣分！只要有運用到標題標籤的概念即可。',
+    '3. 【延伸優化建議「只在評語提醒，嚴禁扣分」】：',
+    '   - 如果你想提醒學生「未來若有導覽列可以加入 <nav>」、「主標題若用 <h1> 會更明確」、「article 外部也可依需要考慮 section」等優化方向，請務必只在 feedback 學習評語中以親切、讚美的方式作為補充提示，絕對不可以將其當作扣分依據！',
+    '4. 【扣分與通過門檻規範】：',
+    '   - 只要核心語意有改寫出來，基本分從 85 分起跳（85 ~ 100 分）。',
+    '   - 若只有部分轉換（例如只改了一兩個標籤，其他大部分仍是 div），給予 65 ~ 80 分。',
+    '   - 只要分數達到 60 分以上，passed 就必須設為 true！',
+    '5. 【錯誤指引規範】：若通過（passed: true），errors 陣列必須為空 []！不要把優化建議當成錯誤放入 errors 中！',
+    '6. 【格式規定】：必須以純 JSON 格式回傳，請勿夾帶任何 markdown 代碼塊標記。',
     '',
     'JSON 格式規範：',
     jsonSpec,
@@ -65,10 +78,36 @@ function buildPrompt(data: Record<string, any>): string {
 // 智慧服務端語意檢核備援
 function serverSemanticEvaluate(data: Record<string, any>) {
   const checklist: string[] = Array.isArray(data.checklist) ? data.checklist : []
+  const starter = data.starterCode || { html: '', css: '', js: '' }
   const stu = data.studentCode || { html: '', css: '', js: '' }
-  const html = stu.html || ''
-  const css = stu.css || ''
-  const js = stu.js || ''
+  const html = (stu.html || '').trim()
+  const css = (stu.css || '').trim()
+  const js = (stu.js || '').trim()
+
+  const starterHtml = (starter.html || '').trim()
+  const starterCss = (starter.css || '').trim()
+  const starterJs = (starter.js || '').trim()
+
+  // 1. 與原始代碼一模一樣：0 分
+  const isIdentical = html === starterHtml && css === starterCss && js === starterJs
+  if (isIdentical || (!html && !css && !js)) {
+    return {
+      success: true,
+      passed: false,
+      score: 0,
+      summary: '你尚未修改初始程式碼，請依照練習說明開始動手寫寫看喔！',
+      feedback: '動手實作是學好網頁開發最快的方法，嘗試在編輯區輸入對應的程式碼吧！',
+      errors: [
+        {
+          panel: 'html',
+          line: 1,
+          message: '你提交的程式碼與初始代碼完全相同',
+          suggestion: '請對照題目說明與檢核清單，在編輯器中編寫程式碼後再進行驗證。',
+        },
+      ],
+      checklistStatus: checklist.map((item) => ({ text: item, passed: false })),
+    }
+  }
 
   const errors: any[] = []
   const checklistStatus: any[] = []
@@ -81,7 +120,14 @@ function serverSemanticEvaluate(data: Record<string, any>) {
     const targetTag = tagMatch ? tagMatch[1].toLowerCase() : null
 
     if (targetTag) {
-      isPassed = new RegExp(`<${targetTag}(\\s+[^>]*)?>`, 'i').test(html)
+      // 概念性彈性：若要求 h1~h6 任何標題標籤，只要有使用任意標題標籤均算具備標題概念
+      if (/^h[1-6]$/.test(targetTag)) {
+        isPassed = /<h[1-6](\s+[^>]*)?>/i.test(html)
+      } else {
+        isPassed = new RegExp(`<${targetTag}(\\s+[^>]*)?>`, 'i').test(html)
+      }
+    } else if (itemLower.includes('標題') || itemLower.includes('heading')) {
+      isPassed = /<h[1-6](\s+[^>]*)?>/i.test(html)
     } else if (itemLower.includes('header')) {
       isPassed = /<header(\s+[^>]*)?>/i.test(html)
     } else if (itemLower.includes('nav')) {
@@ -93,11 +139,11 @@ function serverSemanticEvaluate(data: Record<string, any>) {
     } else if (itemLower.includes('article') || itemLower.includes('section')) {
       isPassed = /<(article|section)(\s+[^>]*)?>/i.test(html)
     } else if (itemLower.includes('css') || itemLower.includes('樣式')) {
-      isPassed = css.trim().length > 10 || /<style(\s+[^>]*)?>/i.test(html)
+      isPassed = css.length > 5 || /<style(\s+[^>]*)?>/i.test(html)
     } else if (itemLower.includes('js') || itemLower.includes('javascript')) {
-      isPassed = js.trim().length > 5 || /<script(\s+[^>]*)?>/i.test(html)
+      isPassed = js.length > 5 || /<script(\s+[^>]*)?>/i.test(html)
     } else {
-      isPassed = html.trim().length > 20
+      isPassed = html.length > 10
     }
 
     if (isPassed) passedCount++
@@ -106,14 +152,31 @@ function serverSemanticEvaluate(data: Record<string, any>) {
 
   const total = checklist.length || 1
   const ratio = passedCount / total
-  const passed = ratio >= 0.8
+
+  // 全對100分，些許錯誤斟酌扣分，滿60分即及格
+  let score = 0
+  if (ratio >= 1.0) {
+    score = 100
+  } else if (ratio >= 0.8) {
+    score = 85
+  } else if (ratio >= 0.6) {
+    score = 65
+  } else {
+    score = Math.round(ratio * 50)
+  }
+
+  const passed = score >= 60
 
   return {
     success: true,
     passed,
-    score: passed ? Math.min(100, Math.round(85 + ratio * 15)) : Math.round(ratio * 70),
-    summary: passed ? '實作結構與語意標準完整，恭喜通過！' : '部分項目尚未達成，請對照檢核清單進行調整。',
-    feedback: passed ? '標籤結構規範，完成度非常高！' : '請確認題目要求的各個標籤是否都已正確加入。',
+    score,
+    summary: passed
+      ? (score === 100 ? '你的實作完全符合所有題目要求，表現非常優秀！' : '你已達成大部分題目要求，順利通過驗證！')
+      : '部分檢核項目尚未達成，請對照下方提示進行調整喔！',
+    feedback: passed
+      ? (score === 100 ? '程式碼語意結構非常規範，繼續保持！' : '很棒！你已經掌握了核心概念，若能微調細節會更加完美～')
+      : '請確認題目要求的各個標籤與屬性是否都有正確填寫在對應的面板中。',
     errors,
     checklistStatus,
   }

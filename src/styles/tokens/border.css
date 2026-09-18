@@ -1,0 +1,16 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Border Tokens
+   ============================================================ */
+
+:root {
+  --border-width-hairline: 1px;
+  --border-width-focus:    2px;
+  --border-width-thick:    3px;
+
+  --border-subtle:     1px solid var(--color-border-subtle);
+  --border-default:    1px solid var(--color-border-default);
+  --border-strong:     1px solid var(--color-border-strong);
+  --border-focus:      2px solid var(--color-border-focus);
+  --border-interactive: 1px solid var(--color-border-default);
+}

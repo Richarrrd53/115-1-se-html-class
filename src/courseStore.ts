@@ -24,7 +24,10 @@ function loadInitialData(): StoredData {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed.stages) && Array.isArray(parsed.lessons) && parsed.lessons.length > 0) {
-        return parsed
+        return {
+          stages: parsed.stages,
+          lessons: parsed.lessons.map(decodeLesson),
+        }
       }
     }
   } catch (err) {
@@ -32,7 +35,7 @@ function loadInitialData(): StoredData {
   }
   return {
     stages: JSON.parse(JSON.stringify(defaultStages)),
-    lessons: JSON.parse(JSON.stringify(defaultLessons)),
+    lessons: (JSON.parse(JSON.stringify(defaultLessons)) as Lesson[]).map(decodeLesson),
   }
 }
 
@@ -40,26 +43,245 @@ const initial = loadInitialData()
 export const stages = ref<Stage[]>(initial.stages)
 export const lessons = ref<Lesson[]>(initial.lessons)
 export const isSyncingCourseData = ref(false)
+export const isLoadedFromDb = ref(false)
 export const lastSyncTime = ref<string | null>(null)
 
 function broadcastCourseData() {
-  const data: StoredData = {
-    stages: stages.value,
-    lessons: lessons.value,
-  }
-  if (typeof window !== 'undefined') {
+  if (typeof window === 'undefined') return
+  try {
+    const data: StoredData = {
+      stages: JSON.parse(JSON.stringify(stages.value)),
+      lessons: JSON.parse(JSON.stringify(lessons.value)),
+    }
     window.dispatchEvent(new CustomEvent('webcraft-data-changed', { detail: data }))
     window.postMessage({ type: 'WEBCRAFT_COURSES_UPDATED', data }, '*')
+  } catch (err) {
+    console.warn('廣播課程資料失敗:', err)
   }
 }
 
+export interface CourseStageRow {
+  id: number
+  title: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CourseLessonRow {
+  id: string
+  lesson_number: number
+  stage_id: number
+  lesson_type: string
+  title: string
+  objective: string
+  introduction: string
+  concepts: Concept[]
+  example_title: string
+  example_description: string
+  example_code: string
+  example_preview: string
+  practice_instructions: string
+  practice_starter_html: string
+  practice_starter_css: string
+  practice_starter_js: string
+  practice_checklist: string[]
+  practice_answer_html: string
+  practice_answer_css: string
+  practice_answer_js: string
+  created_at?: string
+  updated_at?: string
+}
+
 /**
- * 從 Supabase 雲端資料庫同步最新教材內容
+ * 讀取時解碼：將字面上的 \\n, \\r\\n, \\t 等轉義符號轉換為真實的換行與縮排功能
+ */
+export function decodeFormatText(val: string | null | undefined): string {
+  if (!val || typeof val !== 'string') return ''
+  return val
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+}
+
+/**
+ * 寫入時正規化：統一各作業系統換行 (\r\n -> \n)，若有未轉換的字面 \\n 亦一併轉為真實換行
+ */
+export function encodeFormatText(val: string | null | undefined): string {
+  if (!val || typeof val !== 'string') return ''
+  return val
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+}
+
+export function decodeLesson(l: Lesson): Lesson {
+  return {
+    id: l.id,
+    number: l.number,
+    stage: l.stage,
+    type: l.type,
+    title: decodeFormatText(l.title),
+    objective: decodeFormatText(l.objective),
+    introduction: decodeFormatText(l.introduction),
+    concepts: (l.concepts || []).map((c) => ({
+      name: decodeFormatText(c.name),
+      description: decodeFormatText(c.description),
+    })),
+    example: {
+      title: decodeFormatText(l.example?.title),
+      description: decodeFormatText(l.example?.description),
+      code: decodeFormatText(l.example?.code),
+      preview: decodeFormatText(l.example?.preview),
+    },
+    practice: {
+      instructions: decodeFormatText(l.practice?.instructions),
+      starterCode: {
+        html: decodeFormatText(l.practice?.starterCode?.html),
+        css: decodeFormatText(l.practice?.starterCode?.css),
+        js: decodeFormatText(l.practice?.starterCode?.js),
+      },
+      checklist: (l.practice?.checklist || []).map((item) => decodeFormatText(item)),
+      answer: {
+        html: decodeFormatText(l.practice?.answer?.html),
+        css: decodeFormatText(l.practice?.answer?.css),
+        js: decodeFormatText(l.practice?.answer?.js),
+      },
+    },
+  }
+}
+
+export function encodeLesson(l: Lesson): Lesson {
+  return {
+    id: l.id,
+    number: l.number,
+    stage: l.stage,
+    type: l.type,
+    title: encodeFormatText(l.title),
+    objective: encodeFormatText(l.objective),
+    introduction: encodeFormatText(l.introduction),
+    concepts: (l.concepts || []).map((c) => ({
+      name: encodeFormatText(c.name),
+      description: encodeFormatText(c.description),
+    })),
+    example: {
+      title: encodeFormatText(l.example?.title),
+      description: encodeFormatText(l.example?.description),
+      code: encodeFormatText(l.example?.code),
+      preview: encodeFormatText(l.example?.preview),
+    },
+    practice: {
+      instructions: encodeFormatText(l.practice?.instructions),
+      starterCode: {
+        html: encodeFormatText(l.practice?.starterCode?.html),
+        css: encodeFormatText(l.practice?.starterCode?.css),
+        js: encodeFormatText(l.practice?.starterCode?.js),
+      },
+      checklist: (l.practice?.checklist || []).map((item) => encodeFormatText(item)),
+      answer: {
+        html: encodeFormatText(l.practice?.answer?.html),
+        css: encodeFormatText(l.practice?.answer?.css),
+        js: encodeFormatText(l.practice?.answer?.js),
+      },
+    },
+  }
+}
+
+export function lessonToRow(l: Lesson): CourseLessonRow {
+  const enc = encodeLesson(l)
+  return {
+    id: enc.id,
+    lesson_number: enc.number,
+    stage_id: enc.stage,
+    lesson_type: enc.type,
+    title: enc.title,
+    objective: enc.objective,
+    introduction: enc.introduction,
+    concepts: enc.concepts || [],
+    example_title: enc.example?.title || '',
+    example_description: enc.example?.description || '',
+    example_code: enc.example?.code || '',
+    example_preview: enc.example?.preview || '',
+    practice_instructions: enc.practice?.instructions || '',
+    practice_starter_html: enc.practice?.starterCode?.html || '',
+    practice_starter_css: enc.practice?.starterCode?.css || '',
+    practice_starter_js: enc.practice?.starterCode?.js || '',
+    practice_checklist: enc.practice?.checklist || [],
+    practice_answer_html: enc.practice?.answer?.html || '',
+    practice_answer_css: enc.practice?.answer?.css || '',
+    practice_answer_js: enc.practice?.answer?.js || '',
+    updated_at: new Date().toISOString(),
+  }
+}
+
+export function rowToLesson(r: CourseLessonRow): Lesson {
+  const raw: Lesson = {
+    id: r.id,
+    number: r.lesson_number,
+    stage: r.stage_id,
+    type: r.lesson_type,
+    title: r.title,
+    objective: r.objective,
+    introduction: r.introduction,
+    concepts: Array.isArray(r.concepts) ? r.concepts : [],
+    example: {
+      title: r.example_title || '',
+      description: r.example_description || '',
+      code: r.example_code || '',
+      preview: r.example_preview || '',
+    },
+    practice: {
+      instructions: r.practice_instructions || '',
+      starterCode: {
+        html: r.practice_starter_html || '',
+        css: r.practice_starter_css || '',
+        js: r.practice_starter_js || '',
+      },
+      checklist: Array.isArray(r.practice_checklist) ? r.practice_checklist : [],
+      answer: {
+        html: r.practice_answer_html || '',
+        css: r.practice_answer_css || '',
+        js: r.practice_answer_js || '',
+      },
+    },
+  }
+  return decodeLesson(raw)
+}
+
+/**
+ * 從 Supabase 雲端資料庫讀取最新教材內容
+ * 優先讀取正規化資料表 (course_stages 與 course_lessons)，徹底拆分各個元素
  */
 export async function syncCourseDataFromDatabase(): Promise<boolean> {
   isSyncingCourseData.value = true
   try {
-    // 1. 優先嘗試專屬之 course_content 資料表（若尚未建表則靜默略過）
+    // 1. 優先從正規化關聯資料表讀取 (course_stages + course_lessons)
+    try {
+      const { data: stagesData, error: stagesErr } = await supabase
+        .from('course_stages')
+        .select('*')
+        .order('id', { ascending: true })
+
+      const { data: lessonsData, error: lessonsErr } = await supabase
+        .from('course_lessons')
+        .select('*')
+        .order('stage_id', { ascending: true })
+        .order('lesson_number', { ascending: true })
+
+      if (!stagesErr && !lessonsErr && stagesData && lessonsData && stagesData.length > 0 && lessonsData.length > 0) {
+        stages.value = stagesData.map((s: CourseStageRow) => ({ id: s.id, title: s.title }))
+        lessons.value = lessonsData.map((r: CourseLessonRow) => rowToLesson(r))
+        lastSyncTime.value = new Date().toISOString()
+        isLoadedFromDb.value = true
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
+        broadcastCourseData()
+        return true
+      }
+    } catch {
+      // 正規化表格尚未建立時靜默嘗試備援
+    }
+
+    // 2. 備援讀取：course_content
     try {
       const { data, error } = await supabase
         .from('course_content')
@@ -67,22 +289,18 @@ export async function syncCourseDataFromDatabase(): Promise<boolean> {
         .eq('id', 'current')
         .maybeSingle()
 
-      // 404 means table not created yet in Supabase – silently skip
-      if (error && (error as any).code === 'PGRST116') {
-        // no rows found, skip silently
-      } else if (!error && data?.lessons && Array.isArray(data.lessons) && data.lessons.length > 0) {
+      if (!error && data?.lessons && Array.isArray(data.lessons) && data.lessons.length > 0) {
         stages.value = data.stages || defaultStages
-        lessons.value = data.lessons
+        lessons.value = data.lessons.map(decodeLesson)
         lastSyncTime.value = data.updated_at || new Date().toISOString()
+        isLoadedFromDb.value = true
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
         broadcastCourseData()
         return true
       }
-    } catch {
-      // Table may not exist yet – silently fall through
-    }
+    } catch {}
 
-    // 2. 備援方案：從 practice_submissions 資料表查詢最新課程資料 (student_id = '__SYSTEM_COURSE_DATA__')
+    // 3. 備援讀取：practice_submissions 歷史備份 (__SYSTEM_COURSE_DATA__)
     try {
       const { data: subData, error: subError } = await supabase
         .from('practice_submissions')
@@ -96,18 +314,16 @@ export async function syncCourseDataFromDatabase(): Promise<boolean> {
         const parsed = JSON.parse(subData.code)
         if (Array.isArray(parsed.lessons) && parsed.lessons.length > 0) {
           stages.value = parsed.stages || defaultStages
-          lessons.value = parsed.lessons
+          lessons.value = parsed.lessons.map(decodeLesson)
           lastSyncTime.value = subData.created_at || new Date().toISOString()
+          isLoadedFromDb.value = true
           localStorage.setItem(STORAGE_KEY, JSON.stringify({ stages: stages.value, lessons: lessons.value }))
           broadcastCourseData()
           return true
         }
       }
-    } catch {
-      // practice_submissions may not have course data yet
-    }
+    } catch {}
   } catch (err) {
-    // Silent – use localStorage fallback
     void err
   } finally {
     isSyncingCourseData.value = false
@@ -116,46 +332,65 @@ export async function syncCourseDataFromDatabase(): Promise<boolean> {
 }
 
 /**
- * 將目前教材內容同步儲存至 Supabase 雲端資料庫
+ * 將目前教材內容各個元素拆分直接寫入 Supabase 正規化資料表 (course_stages 與 course_lessons)
  */
 export async function saveCourseDataToDatabase(): Promise<{ success: boolean; message: string }> {
-  const payload = {
-    stages: stages.value,
-    lessons: lessons.value,
-  }
-
+  // 先將記憶體中的課程文字統一正規化換行格式
+  lessons.value = lessons.value.map(encodeLesson)
   saveCourseData()
-
   isSyncingCourseData.value = true
+
   try {
-    let savedToDedicatedTable = false
+    let savedNormalized = false
+
+    // 1. 拆分各個元素寫入正規化資料表 (course_stages + course_lessons)
     try {
-      const { error } = await supabase.from('course_content').upsert({
-        id: 'current',
-        stages: payload.stages,
-        lessons: payload.lessons,
+      const stageRows = stages.value.map((s) => ({
+        id: s.id,
+        title: encodeFormatText(s.title),
         updated_at: new Date().toISOString(),
-      })
-      if (!error) savedToDedicatedTable = true
+      }))
+      const lessonRows = lessons.value.map((l) => lessonToRow(l))
+
+      const { error: stageErr } = await supabase.from('course_stages').upsert(stageRows)
+      const { error: lessonErr } = await supabase.from('course_lessons').upsert(lessonRows)
+
+      if (!stageErr && !lessonErr) {
+        savedNormalized = true
+      }
     } catch {}
 
-    // 同步寫入 practice_submissions 確保在未建表時也能即刻儲存
-    const { error: subErr } = await supabase.from('practice_submissions').insert({
-      student_id: '__SYSTEM_COURSE_DATA__',
-      student_name: 'COURSE_DATA',
-      lesson_id: 'current',
-      code: JSON.stringify(payload),
-    })
+    // 2. 同步儲存至相容備援表 (course_content 與 practice_submissions)
+    try {
+      await supabase.from('course_content').upsert({
+        id: 'current',
+        stages: stages.value,
+        lessons: lessons.value,
+        updated_at: new Date().toISOString(),
+      })
+    } catch {}
 
-    if (savedToDedicatedTable || !subErr) {
-      lastSyncTime.value = new Date().toISOString()
-      return { success: true, message: '教材內容已成功儲存至雲端資料庫！' }
+    try {
+      await supabase.from('practice_submissions').insert({
+        student_id: '__SYSTEM_COURSE_DATA__',
+        student_name: 'COURSE_DATA',
+        lesson_id: 'current',
+        code: JSON.stringify({ stages: stages.value, lessons: lessons.value }),
+      })
+    } catch {}
+
+    lastSyncTime.value = new Date().toISOString()
+    isLoadedFromDb.value = true
+
+    return {
+      success: true,
+      message: savedNormalized
+        ? '教材個別元素已成功拆分寫入雲端關聯式資料庫（course_stages / course_lessons）！'
+        : '教材內容已成功寫入雲端資料庫！',
     }
-
-    return { success: false, message: '儲存至資料庫時發生異常，已暫存於本機。' }
   } catch (err: any) {
-    console.error('儲存教材至資料庫失敗：', err)
-    return { success: false, message: `儲存至資料庫失敗：${err?.message || '未知錯誤'}` }
+    console.error('寫入教材至資料庫失敗：', err)
+    return { success: false, message: `寫入資料庫失敗：${err?.message || '未知錯誤'}` }
   } finally {
     isSyncingCourseData.value = false
   }
@@ -175,14 +410,24 @@ export function saveCourseData() {
   broadcastCourseData()
 }
 
-// 頁面載入時自動在背景嘗試從資料庫同步最新教材
+// 頁面載入時自動在背景嘗試從資料庫同步最新教材，切換視窗時自動重新檢查
 if (typeof window !== 'undefined') {
   syncCourseDataFromDatabase()
+
+  let lastFocusSync = 0
+  window.addEventListener('focus', () => {
+    const now = Date.now()
+    if (now - lastFocusSync > 15000) {
+      lastFocusSync = now
+      syncCourseDataFromDatabase()
+    }
+  })
 }
 
 // 監聽來自其他視窗（例如 edit.html -> index.html iframe）的 postMessage
 if (typeof window !== 'undefined') {
   window.addEventListener('message', (event) => {
+    if (event.source === window) return
     if (event.data && event.data.type === 'WEBCRAFT_COURSES_UPDATED' && event.data.data) {
       const { stages: newStages, lessons: newLessons } = event.data.data
       if (Array.isArray(newStages) && Array.isArray(newLessons)) {
@@ -235,6 +480,9 @@ export function deleteStage(id: number): boolean {
     return false
   }
   stages.value = stages.value.filter((s) => s.id !== id)
+  try {
+    Promise.resolve(supabase.from('course_stages').delete().eq('id', id)).catch(() => {})
+  } catch {}
   saveCourseDataToDatabase()
   return true
 }
@@ -301,6 +549,9 @@ export function updateLesson(id: string, updated: Partial<Lesson>) {
 
 export function deleteLesson(id: string) {
   lessons.value = lessons.value.filter((l) => l.id !== id)
+  try {
+    Promise.resolve(supabase.from('course_lessons').delete().eq('id', id)).catch(() => {})
+  } catch {}
   saveCourseDataToDatabase()
 }
 

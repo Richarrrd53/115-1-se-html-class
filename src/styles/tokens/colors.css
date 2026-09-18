@@ -1,0 +1,76 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Layer 2: Semantic Color Tokens
+   Role-based, Meaningful Color Abstractions (No Filmstrip)
+   ============================================================ */
+
+:root {
+  /* ── 1. Typography / Text Roles ── */
+  --color-text-primary:    var(--slate-900); /* High contrast titles & core text */
+  --color-text-secondary:  var(--slate-600); /* Descriptions & secondary labels */
+  --color-text-tertiary:   var(--slate-500); /* Auxiliary metadata & hints */
+  --color-text-muted:      var(--slate-400); /* Placeholders & inactive icons */
+  --color-text-disabled:   var(--slate-300); /* Disabled state labels */
+  --color-text-inverse:    var(--white);     /* Text on dark surfaces & solid buttons */
+  --color-text-brand:      var(--blue-600);  /* Brand links & active highlighted text */
+  --color-text-accent:     var(--sky-500);   /* Sky cyan highlights */
+  --color-text-danger:     var(--red-500);   /* Errors & destructive warnings */
+  --color-text-success:    var(--emerald-600); /* Success statuses */
+  --color-text-warning:    var(--amber-600); /* Warning notices */
+
+  /* ── 2. Background & Surface Roles ── */
+  --color-bg-page:              var(--slate-50);  /* Crisp light page canvas */
+  --color-bg-subtle:            var(--slate-100); /* Inset wells & secondary sections */
+  --color-surface-primary:       var(--white);     /* Primary card & container surface */
+  --color-surface-secondary:     var(--slate-50);  /* Table header rows & secondary boxes */
+  --color-surface-elevated:      var(--white);     /* Popovers, menus & modals */
+  --color-surface-overlay:       rgba(15, 23, 42, 0.48); /* Backdrop modal scrim with blur */
+  --color-surface-selected:      rgba(37, 99, 235, 0.08); /* 8% brand blue fill */
+  --color-surface-hover:         rgba(15, 23, 42, 0.035);
+  --color-surface-disabled:      var(--slate-100);
+  --color-surface-dark:          var(--slate-900); /* Code editor canvas & dark modules */
+  --color-surface-dark-subtle:   var(--slate-800); /* Dark toolbar & tab strips */
+  --color-surface-skeleton:      #e2e8f0;          /* Skeleton loader base */
+
+  /* ── 3. Border & Divider Roles ── */
+  --color-border-default:   var(--slate-200); /* Standard card & divider line */
+  --color-border-subtle:    rgba(226, 232, 240, 0.8);
+  --color-border-strong:    var(--slate-300); /* Input boundaries & focused cards */
+  --color-border-focus:     var(--blue-500);  /* Focused active elements ring */
+  --color-border-selected:  var(--blue-600);  /* Selected active tab / card border */
+  --color-border-danger:    var(--red-400);
+  --color-border-success:   var(--emerald-500);
+  --color-border-warning:   var(--amber-400);
+
+  /* ── 4. Action / Interactive Roles ── */
+  --color-action-primary-default:   var(--blue-600);
+  --color-action-primary-hover:     var(--blue-700);
+  --color-action-primary-active:    var(--blue-800);
+  --color-action-primary-disabled:  var(--slate-300);
+
+  --color-action-secondary-default: var(--slate-100);
+  --color-action-secondary-hover:   var(--slate-200);
+  --color-action-secondary-active:  var(--slate-300);
+
+  --color-action-danger-default:    var(--red-500);
+  --color-action-danger-hover:      var(--red-600);
+  --color-action-danger-active:     var(--red-700);
+
+  /* ── 5. Status & Feedback Roles ── */
+  --color-status-success:     var(--emerald-500);
+  --color-status-success-bg:  var(--emerald-50);
+  --color-status-warning:     var(--amber-500);
+  --color-status-warning-bg:  var(--amber-50);
+  --color-status-error:       var(--red-500);
+  --color-status-error-bg:    var(--red-50);
+  --color-status-info:        var(--sky-500);
+  --color-status-info-bg:     var(--sky-50);
+
+  /* ── 6. Brand Identity & Accents ── */
+  --color-brand-primary:        var(--blue-600);
+  --color-brand-primary-light:  var(--blue-500);
+  --color-brand-primary-soft:   rgba(37, 99, 235, 0.08);
+  --color-brand-accent:         var(--sky-500);
+  --color-brand-accent-light:   var(--sky-400);
+  --color-brand-accent-soft:    var(--sky-100);
+}

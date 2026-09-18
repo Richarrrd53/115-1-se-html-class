@@ -1,0 +1,18 @@
+/* ============================================================
+   WEBCRAFT DESIGN SYSTEM (Inspired by StoryboardAI2)
+   Blur & Glassmorphism Tokens
+   ============================================================ */
+
+:root {
+  --blur-none: none;
+  --blur-xs:   blur(4px);
+  --blur-sm:   blur(8px);
+  --blur-md:   blur(16px);
+  --blur-lg:   blur(24px);
+  --blur-xl:   blur(40px);
+
+  /* ── Frosted Acrylic Floating Surfaces ── */
+  --backdrop-glass-nav:   blur(16px) saturate(180%);
+  --backdrop-glass-modal: blur(20px) saturate(160%);
+  --backdrop-glass-panel: blur(12px) saturate(140%);
+}
