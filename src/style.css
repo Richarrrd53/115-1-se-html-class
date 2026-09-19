@@ -157,15 +157,11 @@ pre code {
 .brand-mark {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--blue-600), var(--blue-700));
-  color: var(--white);
   display: grid;
   place-items: center;
   font-family: var(--font-family-display);
   font-size: 14px;
   font-weight: 800;
-  box-shadow: var(--shadow-brand-glow);
   letter-spacing: -0.05em;
   transition: transform var(--motion-duration-base) var(--motion-ease-spring);
 }

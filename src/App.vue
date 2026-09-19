@@ -6,6 +6,7 @@ import { renderMarkdown, renderInlineMarkdown } from './markdown'
 import { verifyCourseMember } from './memberService'
 import { verifyPracticeWithAI, type AiVerificationResult, getTaiwanTimeString } from './aiService'
 import MathCurveLoader from './components/MathCurveLoader.vue'
+import VsCodeEditor from './components/VsCodeEditor.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const contentRef = ref<HTMLElement | null>(null)
@@ -445,10 +446,6 @@ function resetCode() {
     aiResult.value = null
     aiQueueMessage.value = ''
   }
-}
-
-function panelHasError(panel: 'html' | 'css' | 'js'): boolean {
-  return Boolean(aiResult.value?.errors.some((e) => e.panel === panel))
 }
 
 async function runAiVerification() {
@@ -1027,7 +1024,7 @@ const previewDocument = computed(() => `<!doctype html>
     </transition>
     <header class="topbar">
       <div class="brand">
-        <div class="brand-mark">&lt;/&gt;</div>
+        <div class="brand-mark"><img src="../public/favicon.svg" alt=""></div>
         <div><strong>WebCraft</strong><span>軟體工程入門互動練習</span></div>
       </div>
       <div class="top-progress">
@@ -1178,25 +1175,11 @@ const previewDocument = computed(() => `<!doctype html>
               </transition>
 
           <div class="editor-layout">
-            <div class="editor-panel">
-              <div class="tabs">
-                <button :class="{ active: activePanel === 'html', 'tab-has-error': panelHasError('html') }" @click="activePanel = 'html'">
-                  <i class="html-dot"></i> HTML
-                  <span v-if="panelHasError('html')" class="panel-error-dot" title="HTML 有未通過項目">!</span>
-                </button>
-                <button :class="{ active: activePanel === 'css', 'tab-has-error': panelHasError('css') }" @click="activePanel = 'css'">
-                  <i class="css-dot"></i> CSS
-                  <span v-if="panelHasError('css')" class="panel-error-dot" title="CSS 有未通過項目">!</span>
-                </button>
-                <button :class="{ active: activePanel === 'js', 'tab-has-error': panelHasError('js') }" @click="activePanel = 'js'">
-                  <i class="js-dot"></i> JavaScript
-                  <span v-if="panelHasError('js')" class="panel-error-dot" title="JS 有未通過項目">!</span>
-                </button>
-              </div>
-              <textarea v-show="activePanel === 'html'" v-model="code.html" spellcheck="false" aria-label="HTML 編輯器" :class="{ 'textarea-has-error': panelHasError('html') }"></textarea>
-              <textarea v-show="activePanel === 'css'" v-model="code.css" spellcheck="false" aria-label="CSS 編輯器" :class="{ 'textarea-has-error': panelHasError('css') }"></textarea>
-              <textarea v-show="activePanel === 'js'" v-model="code.js" spellcheck="false" aria-label="JavaScript 編輯器" :class="{ 'textarea-has-error': panelHasError('js') }"></textarea>
-            </div>
+            <VsCodeEditor
+              v-model="code"
+              v-model:active-panel="activePanel"
+              :errors="aiResult?.errors || []"
+            />
             <div class="preview-panel">
               <div class="preview-toolbar"><span><i></i> 即時預覽</span><small>輸入程式碼後會立即更新</small></div>
               <iframe :srcdoc="previewDocument" title="程式碼即時預覽" sandbox="allow-scripts"></iframe>
