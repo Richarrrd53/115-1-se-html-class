@@ -2118,6 +2118,7 @@ iframe {
 
 .editor-header {
   height: 64px;
+  min-height: 64px;
   background: var(--surface-floating-bg);
   backdrop-filter: var(--backdrop-glass-nav);
   -webkit-backdrop-filter: var(--backdrop-glass-nav);
@@ -2125,16 +2126,19 @@ iframe {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  gap: 16px;
+  padding: 0 20px;
+  gap: 12px;
   flex-shrink: 0;
-  z-index: 20;
+  z-index: 50;
+  position: relative;
+  overflow: visible;
 }
 
 .editor-brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .editor-brand strong {
   display: block;
@@ -2142,18 +2146,21 @@ iframe {
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--color-text-primary);
+  white-space: nowrap;
 }
 .editor-brand span {
   display: block;
   font-size: 0.75rem;
   color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 .editor-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .divider {
@@ -2161,6 +2168,7 @@ iframe {
   height: 24px;
   background: var(--color-border-default);
   margin: 0 4px;
+  flex-shrink: 0;
 }
 
 /* 視圖切換器 (View Mode Tabs) */

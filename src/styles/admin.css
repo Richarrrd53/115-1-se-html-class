@@ -14,6 +14,7 @@
 
 .editor-header {
   height: 64px;
+  min-height: 64px;
   background: var(--surface-floating-bg);
   backdrop-filter: var(--backdrop-glass-nav);
   -webkit-backdrop-filter: var(--backdrop-glass-nav);
@@ -21,16 +22,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  gap: 16px;
+  padding: 0 20px;
+  gap: 12px;
   flex-shrink: 0;
-  z-index: 20;
+  z-index: 50;
+  position: relative;
+  overflow: visible;
 }
 
 .editor-brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 .editor-brand strong {
   display: block;
@@ -38,18 +42,21 @@
   font-size: 1.05rem;
   font-weight: 800;
   color: var(--color-text-primary);
+  white-space: nowrap;
 }
 .editor-brand span {
   display: block;
   font-size: 0.75rem;
   color: var(--color-text-tertiary);
+  white-space: nowrap;
 }
 
 .editor-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .divider {
@@ -57,6 +64,7 @@
   height: 24px;
   background: var(--color-border-default);
   margin: 0 4px;
+  flex-shrink: 0;
 }
 
 /* ── 2. Admin View Mode Tabs (Pill Switcher) ── */
@@ -208,6 +216,162 @@
 
 .file-label {
   cursor: pointer;
+}
+
+/* ── 3.1 Dropdown Menu (更多功能下拉選單) ── */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dropdown-chevron {
+  transition: transform var(--motion-duration-fast, 0.2s) var(--motion-ease-spring, ease);
+}
+
+.dropdown-chevron.open {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 184px;
+  background: var(--surface-floating-bg, #ffffff);
+  backdrop-filter: var(--backdrop-glass-nav, blur(16px));
+  -webkit-backdrop-filter: var(--backdrop-glass-nav, blur(16px));
+  border: 1px solid var(--color-border-default, #e2e8f0);
+  border-radius: var(--radius-md, 12px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  padding: 6px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 8px);
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary, #1e293b);
+  font-size: var(--font-size-xs, 0.8125rem);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--motion-duration-fast, 0.15s);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.dropdown-item:hover:not(:disabled) {
+  background: var(--slate-100, #f1f5f9);
+  color: var(--color-brand-primary, #2563eb);
+}
+
+.dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dropdown-item-danger {
+  color: var(--red-600, #dc2626);
+}
+
+.dropdown-item-danger:hover:not(:disabled) {
+  background: var(--red-50, #fef2f2);
+  color: var(--red-700, #b91c1c);
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: var(--color-border-subtle, #f1f5f9);
+  margin: 4px 0;
+}
+
+.dropdown-file-label {
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.dropdown-item .item-svg {
+  flex-shrink: 0;
+}
+
+.menu-pop-enter-active,
+.menu-pop-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.menu-pop-enter-from,
+.menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+}
+
+/* 頂部導航響應式適應 (防止寬度較低時跑版) */
+.tab-label-short,
+.btn-text-short {
+  display: none;
+}
+
+@media (max-width: 1320px) {
+  .editor-header {
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .editor-brand span.editor-brand-sub {
+    display: none;
+  }
+}
+
+@media (max-width: 1140px) {
+  .editor-header {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .btn-text-full,
+  .tab-label-full {
+    display: none;
+  }
+  .btn-text-short,
+  .tab-label-short {
+    display: inline;
+  }
+  .editor-brand strong {
+    font-size: 0.95rem;
+  }
+  .btn {
+    padding: 6px 14px;
+  }
+}
+
+@media (max-width: 880px) {
+  .editor-header {
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .mode-tab-btn {
+    padding: 5px 10px;
+  }
+  .btn {
+    padding: 5px 10px;
+    font-size: 0.75rem;
+  }
+  .divider {
+    margin: 0 2px;
+  }
 }
 
 /* ── 4. Split Body & Left/Right Panes ── */
@@ -704,12 +868,21 @@
   vertical-align: middle;
 }
 
-.grades-data-table tr:hover td {
-  background: var(--slate-50);
+.grades-data-table tbody tr {
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast, 0.15s) ease;
 }
 
-.grades-data-table tr.row-dirty td {
+.grades-data-table tbody tr:hover td {
+  background: var(--blue-50, #eff6ff);
+}
+
+.grades-data-table tbody tr.row-dirty td {
   background: #fffbeb;
+}
+
+.grades-data-table tbody tr.row-dirty:hover td {
+  background: #fef3c7;
 }
 
 .student-id-code {
@@ -720,8 +893,27 @@
 
 .student-name-text {
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--color-brand-primary, #2563eb);
   font-size: var(--font-size-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.student-name-text:hover {
+  text-decoration: underline;
+}
+
+.name-arrow-icon {
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: all var(--motion-duration-fast, 0.15s);
+  color: var(--color-brand-primary, #2563eb);
+}
+
+.grades-data-table tbody tr:hover .name-arrow-icon {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .duration-display-badge {
