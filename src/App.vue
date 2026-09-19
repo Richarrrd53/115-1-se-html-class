@@ -507,6 +507,22 @@ function logoutDueToInactivity() {
 
 // ==================== 上線時長（Visibility API）與心跳上報（Heartbeat） ====================
 
+// 唯一分頁識別碼（用於焦點搶佔制 Active Tab Claim）
+const currentTabId = typeof crypto !== 'undefined' && crypto.randomUUID
+  ? crypto.randomUUID()
+  : 'tab_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now()
+
+const isMasterTab = ref(false)
+let tabChannel: BroadcastChannel | null = null
+
+// 隨機微抖動（Jitter）：在 27 到 33 秒之間隨機浮動，平攤心跳峰值
+function getNextHeartbeatJitterSeconds(): number {
+  return Math.floor(Math.random() * (33 - 27 + 1)) + 27
+}
+
+let nextHeartbeatInterval = getNextHeartbeatJitterSeconds()
+let secondsSinceLastHeartbeat = 0
+
 function getStoredOnlineSeconds(sid: string): number {
   if (!sid) return 0
   const saved = localStorage.getItem(`webcraft-online-seconds-${sid.trim()}`)
@@ -519,8 +535,91 @@ let durationTickerTimer: ReturnType<typeof setInterval> | null = null
 let lastTickTime = Date.now()
 let isHeartbeatInFlight = false
 
+function saveCurrentOnlineSeconds() {
+  const sid = studentId.value.trim()
+  if (sid) {
+    localStorage.setItem(
+      `webcraft-online-seconds-${sid}`,
+      String(onlineDurationSeconds.value),
+    )
+  }
+}
+
+// 初始化分頁廣播頻道（焦點搶佔制）
+function initTabCoordinator() {
+  if (typeof BroadcastChannel === 'undefined' || isAdminOrPreviewMode()) return
+
+  try {
+    if (tabChannel) tabChannel.close()
+    tabChannel = new BroadcastChannel('webcraft_active_tab_channel')
+    tabChannel.onmessage = (event: MessageEvent) => {
+      const msg = event.data
+      if (!msg || typeof msg !== 'object') return
+
+      // 當其他分頁發出「我接管了！」(CLAIM_MASTER) 廣播時
+      if (msg.type === 'CLAIM_MASTER') {
+        if (msg.tabId !== currentTabId) {
+          // 其他分頁接管了主控權，本分頁立刻繳械、結算並暫停計時
+          yieldMasterTab()
+        }
+      } else if (msg.type === 'YIELD_ACK') {
+        // 收到舊分頁繳械時上報的最新秒數，進行即時同步，確保秒數無縫銜接
+        if (typeof msg.onlineSeconds === 'number' && msg.onlineSeconds > onlineDurationSeconds.value) {
+          onlineDurationSeconds.value = msg.onlineSeconds
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('BroadcastChannel 初始化失敗，使用單分頁模式：', err)
+  }
+}
+
+// 焦點搶佔制（Active Tab Claim）：宣告本分頁接管為 Master
+function claimMasterTab() {
+  if (isAdminOrPreviewMode()) return
+  const sid = studentId.value.trim()
+  if (!sid) return
+
+  // 1. 同步讀取 localStorage 中最新秒數
+  const storedSeconds = getStoredOnlineSeconds(sid)
+  if (storedSeconds > onlineDurationSeconds.value) {
+    onlineDurationSeconds.value = storedSeconds
+  }
+
+  isMasterTab.value = true
+  lastTickTime = Date.now()
+
+  // 2. 透過廣播頻道喊一聲：「我接管了！」通知其他分頁立刻繳械
+  try {
+    tabChannel?.postMessage({
+      type: 'CLAIM_MASTER',
+      tabId: currentTabId,
+      studentId: sid,
+      timestamp: Date.now(),
+    })
+  } catch {}
+}
+
+// 舊分頁繳械、結算並暫停計時
+function yieldMasterTab() {
+  if (isMasterTab.value) {
+    saveCurrentOnlineSeconds()
+    isMasterTab.value = false
+    try {
+      tabChannel?.postMessage({
+        type: 'YIELD_ACK',
+        tabId: currentTabId,
+        onlineSeconds: onlineDurationSeconds.value,
+        timestamp: Date.now(),
+      })
+    } catch {}
+  }
+}
+
 async function sendHeartbeat() {
   if (isAdminOrPreviewMode()) return
+  // 只有當前搶佔成功的主控者分頁 (Master) 才能發送心跳
+  if (!isMasterTab.value) return
   const trimmedId = studentId.value.trim()
   const trimmedName = studentName.value.trim()
   if (!trimmedId || !trimmedName || showStudentProfileModal.value) return
@@ -536,6 +635,7 @@ async function sendHeartbeat() {
       code: JSON.stringify({
         type: 'heartbeat',
         online_seconds: onlineDurationSeconds.value,
+        interval_seconds: nextHeartbeatInterval,
         timestamp: new Date().toISOString(),
       }),
       completed: false,
@@ -553,30 +653,36 @@ function startOnlineTracking() {
   if (isAdminOrPreviewMode()) return
   if (durationTickerTimer) clearInterval(durationTickerTimer)
   lastTickTime = Date.now()
+  secondsSinceLastHeartbeat = 0
+  nextHeartbeatInterval = getNextHeartbeatJitterSeconds()
+
   durationTickerTimer = setInterval(() => {
     const now = Date.now()
     const delta = Math.floor((now - lastTickTime) / 1000)
     lastTickTime = now
 
-    // 依據 Page Visibility API：僅在頁面可見 (visible) 且學生已登入時累計時長
+    // 依據「焦點搶佔制」與 Page Visibility API：
+    // 只有當前主控分頁 (isMasterTab)、頁面可見 (visible) 且學生已登入時累計時長
     if (
+      isMasterTab.value &&
       document.visibilityState === 'visible' &&
       studentId.value.trim() &&
       studentName.value.trim() &&
       !showStudentProfileModal.value
     ) {
-      onlineDurationSeconds.value += Math.min(Math.max(delta, 1), 5)
+      const step = Math.min(Math.max(delta, 1), 5)
+      onlineDurationSeconds.value += step
+      secondsSinceLastHeartbeat += step
 
       // 每 10 秒儲存快取至 localStorage
       if (onlineDurationSeconds.value % 10 === 0) {
-        localStorage.setItem(
-          `webcraft-online-seconds-${studentId.value.trim()}`,
-          String(onlineDurationSeconds.value),
-        )
+        saveCurrentOnlineSeconds()
       }
 
-      // 每 60 秒（1 分鐘）發送一次心跳上報
-      if (onlineDurationSeconds.value > 0 && onlineDurationSeconds.value % 60 === 0) {
+      // 當累計秒數達到隨機微抖動（Jitter: 27~33秒）時發送心跳，並重新計算下一次抖動週期
+      if (secondsSinceLastHeartbeat >= nextHeartbeatInterval) {
+        secondsSinceLastHeartbeat = 0
+        nextHeartbeatInterval = getNextHeartbeatJitterSeconds()
         sendHeartbeat()
       }
     }
@@ -585,6 +691,10 @@ function startOnlineTracking() {
 
 function handleUserInteraction() {
   recordStudentActivity(false)
+  // 若當前頁面可見但尚未獲取 Master（例如從其他分頁切換過來後開始互動），立即搶佔 Master
+  if (document.visibilityState === 'visible' && !isMasterTab.value && !isAdminOrPreviewMode()) {
+    claimMasterTab()
+  }
 }
 
 function handleVisibilityOrFocus() {
@@ -592,14 +702,10 @@ function handleVisibilityOrFocus() {
   if (isAdminOrPreviewMode()) return
   if (document.visibilityState === 'visible') {
     checkInactivity()
+    claimMasterTab()
   } else {
-    // 當頁面隱藏 (hidden) 時，立即快取最新秒數
-    if (studentId.value.trim()) {
-      localStorage.setItem(
-        `webcraft-online-seconds-${studentId.value.trim()}`,
-        String(onlineDurationSeconds.value),
-      )
-    }
+    // 當頁面隱藏 (hidden) 或切換到其他分頁時，立即繳械結算
+    yieldMasterTab()
   }
 }
 
@@ -631,6 +737,7 @@ async function confirmStudentProfile() {
     recordStudentActivity(true)
     if (!isAdminOrPreviewMode()) {
       onlineDurationSeconds.value = getStoredOnlineSeconds(studentId.value)
+      claimMasterTab()
       startOnlineTracking()
       sendHeartbeat()
     }
@@ -704,6 +811,11 @@ onMounted(() => {
 
   // 記錄初次掛載活躍時間與啟動 Visibility API 在線時長心跳追蹤（管理員或預覽模式下不記錄）
   if (!isAdminOrPreviewMode()) {
+    initTabCoordinator()
+    if (document.visibilityState === 'visible') {
+      claimMasterTab()
+    }
+
     if (studentId.value.trim() && studentName.value.trim()) {
       recordStudentActivity(true)
       sendHeartbeat()
@@ -740,6 +852,11 @@ onUnmounted(() => {
   window.removeEventListener('touchstart', handleUserInteraction)
   document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
   window.removeEventListener('focus', handleVisibilityOrFocus)
+  yieldMasterTab()
+  if (tabChannel) {
+    tabChannel.close()
+    tabChannel = null
+  }
   if (idleCheckInterval) clearInterval(idleCheckInterval)
   if (durationTickerTimer) clearInterval(durationTickerTimer)
   if (shakeTimer) clearTimeout(shakeTimer)
