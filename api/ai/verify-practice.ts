@@ -1,16 +1,61 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { GoogleGenAI } from '@google/genai'
+import fs from 'node:fs'
+import path from 'node:path'
+
+function getGcpKeyPath(): string {
+  if (process.platform === 'win32') {
+    const dir = path.join(process.cwd(), 'node_modules', '.tmp')
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch {}
+    return path.join(dir, 'gcp-key.json')
+  }
+  return '/tmp/gcp-key.json'
+}
+
+function ensureGcpCredentials() {
+  if (process.env.GCP_SERVICE_ACCOUNT_BASE64) {
+    try {
+      const credentialsJson = Buffer.from(process.env.GCP_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8')
+      const keyPath = getGcpKeyPath()
+      fs.writeFileSync(keyPath, credentialsJson)
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath
+      console.log('[Vercel API] 已解碼 GCP_SERVICE_ACCOUNT_BASE64 並寫入', keyPath)
+    } catch (err: any) {
+      console.error('[Vercel API] 解析 GCP_SERVICE_ACCOUNT_BASE64 失敗：', err?.message || err)
+    }
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const cred = process.env.GOOGLE_APPLICATION_CREDENTIALS.trim()
+    // 若在 Vercel 上誤將 JSON 內容直接貼入 GOOGLE_APPLICATION_CREDENTIALS
+    if (cred.startsWith('{')) {
+      try {
+        const keyPath = getGcpKeyPath()
+        fs.writeFileSync(keyPath, cred)
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath
+        console.log('[Vercel API] 偵測到 GOOGLE_APPLICATION_CREDENTIALS 為 JSON 字串，已自動寫入', keyPath)
+      } catch (err: any) {
+        console.error('[Vercel API] 寫入憑證失敗：', err?.message || err)
+      }
+    }
+  }
+}
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'project-ab68aaa2-ad0c-4e95-973'
 const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
 const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
-let ai: GoogleGenAI | null = null
-try {
-  ai = new GoogleGenAI({ vertexai: true, project: projectId, location })
-} catch (e) {
-  console.warn('[Vercel API] 初始化 GoogleGenAI 失敗，將啟用智慧語意評核備援：', e)
+function getGoogleGenAI(): GoogleGenAI | null {
+  ensureGcpCredentials()
+  try {
+    return new GoogleGenAI({ vertexai: true, project: projectId, location })
+  } catch (e) {
+    console.warn('[Vercel API] 初始化 GoogleGenAI 失敗，將啟用智慧語意評核備援：', e)
+    return null
+  }
 }
+
+let ai: GoogleGenAI | null = getGoogleGenAI()
 
 function buildPrompt(data: Record<string, any>): string {
   const checklist: string[] = Array.isArray(data.checklist) ? data.checklist : []
@@ -193,6 +238,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const studentId: string = typeof body.studentId === 'string' ? body.studentId.trim() : ''
   const studentName: string = typeof body.studentName === 'string' ? body.studentName.trim() : ''
   if (!studentId || !studentName) return res.status(400).json({ success: false, error: '請先填寫並驗證學號與姓名。' })
+
+  if (!ai) {
+    ai = getGoogleGenAI()
+  }
 
   if (ai) {
     try {

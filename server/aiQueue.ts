@@ -1,4 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
+import fs from 'node:fs'
+import path from 'node:path'
 
 // 載入 .env 設定
 try {
@@ -8,6 +10,45 @@ try {
 } catch {
   // .env 可能已被載入或在特定環境中不存在
 }
+
+function getGcpKeyPath(): string {
+  if (process.platform === 'win32') {
+    const dir = path.join(process.cwd(), 'node_modules', '.tmp')
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+    } catch {}
+    return path.join(dir, 'gcp-key.json')
+  }
+  return '/tmp/gcp-key.json'
+}
+
+function ensureGcpCredentials() {
+  if (process.env.GCP_SERVICE_ACCOUNT_BASE64) {
+    try {
+      const credentialsJson = Buffer.from(process.env.GCP_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf-8')
+      const keyPath = getGcpKeyPath()
+      fs.writeFileSync(keyPath, credentialsJson)
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath
+      console.log('[AI Queue] 已解碼 GCP_SERVICE_ACCOUNT_BASE64 並寫入', keyPath)
+    } catch (err: any) {
+      console.error('[AI Queue] 解析 GCP_SERVICE_ACCOUNT_BASE64 失敗：', err?.message || err)
+    }
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    const cred = process.env.GOOGLE_APPLICATION_CREDENTIALS.trim()
+    if (cred.startsWith('{')) {
+      try {
+        const keyPath = getGcpKeyPath()
+        fs.writeFileSync(keyPath, cred)
+        process.env.GOOGLE_APPLICATION_CREDENTIALS = keyPath
+        console.log('[AI Queue] 偵測到 GOOGLE_APPLICATION_CREDENTIALS 為 JSON 字串，已自動寫入', keyPath)
+      } catch (err: any) {
+        console.error('[AI Queue] 寫入憑證失敗：', err?.message || err)
+      }
+    }
+  }
+}
+
+ensureGcpCredentials()
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'project-ab68aaa2-ad0c-4e95-973'
 const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
