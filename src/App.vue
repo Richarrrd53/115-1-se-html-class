@@ -241,7 +241,50 @@ const submissionCount = computed(() => {
 
 const lesson = computed<Lesson>(() => lessons.value.find((item) => item.id === selectedLessonId.value) || lessons.value[0])
 const practice = computed(() => lesson.value?.practice || { instructions: '', starterCode: { html: '', css: '', js: '' }, checklist: [], answer: { html: '', css: '', js: '' } })
-const code = ref({ ...practice.value.starterCode })
+
+// 紀錄使用者各單元的作答代碼草稿，防止切換單元、背景同步或按下驗證答案時丟失程式碼
+function getDraftStorageKey(lessonId: string): string {
+  const sid = studentId.value.trim() || 'guest'
+  return `webcraft_draft_${sid}_${lessonId}`
+}
+
+function loadDraftForLesson(lessonId: string): { html: string; css: string; js: string } | null {
+  try {
+    const raw = localStorage.getItem(getDraftStorageKey(lessonId))
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        return {
+          html: typeof parsed.html === 'string' ? parsed.html : '',
+          css: typeof parsed.css === 'string' ? parsed.css : '',
+          js: typeof parsed.js === 'string' ? parsed.js : '',
+        }
+      }
+    }
+  } catch {}
+  return null
+}
+
+function saveDraftForLesson(lessonId: string, currentCode: { html: string; css: string; js: string }) {
+  try {
+    localStorage.setItem(getDraftStorageKey(lessonId), JSON.stringify(currentCode))
+  } catch {}
+}
+
+const initialDraft = selectedLessonId.value ? loadDraftForLesson(selectedLessonId.value) : null
+const code = ref(initialDraft || { ...practice.value.starterCode })
+
+// 監聽代碼變動，即時保存至本地草稿
+watch(
+  code,
+  (newCode) => {
+    if (lesson.value?.id) {
+      saveDraftForLesson(lesson.value.id, newCode)
+    }
+  },
+  { deep: true },
+)
+
 const isCurrentComplete = computed(() => (lesson.value ? completedLessons.value[lesson.value.id] || false : false))
 const completedCount = computed(() => Object.values(completedLessons.value).filter(Boolean).length)
 const progress = computed(() => (lessons.value.length ? Math.round((completedCount.value / lessons.value.length) * 100) : 0))
@@ -317,7 +360,12 @@ watch(selectedLessonId, async () => {
   aiResult.value = null
   aiQueueMessage.value = ''
   if (lesson.value?.practice) {
-    code.value = { ...lesson.value.practice.starterCode }
+    const draft = loadDraftForLesson(lesson.value.id)
+    if (draft) {
+      code.value = { ...draft }
+    } else {
+      code.value = { ...lesson.value.practice.starterCode }
+    }
   }
   localStorage.setItem('selected-lesson', selectedLessonId.value)
   refreshPracticeStudents()
@@ -330,7 +378,15 @@ watch(selectedLessonId, async () => {
 watch(
   () => lesson.value?.practice?.starterCode,
   (newStarter) => {
-    if (newStarter) {
+    if (!newStarter) return
+    const currentLessonId = lesson.value?.id
+    const savedDraft = currentLessonId ? loadDraftForLesson(currentLessonId) : null
+    // 若該單元已有草稿或使用者正在編輯，絕不以 starterCode 覆蓋使用者的代碼
+    if (savedDraft) return
+
+    const isUnmodified =
+      code.value.html === '' && code.value.css === '' && code.value.js === ''
+    if (isUnmodified) {
       code.value = { ...newStarter }
     }
   },
@@ -381,7 +437,10 @@ const isLastLesson = computed(() => {
 
 
 function resetCode() {
-  if (practice.value) {
+  if (practice.value && lesson.value) {
+    try {
+      localStorage.removeItem(getDraftStorageKey(lesson.value.id))
+    } catch {}
     code.value = { ...practice.value.starterCode }
     aiResult.value = null
     aiQueueMessage.value = ''
@@ -400,6 +459,16 @@ async function runAiVerification() {
     showStudentProfileModal.value = true
     studentProfileError.value = '請先填寫並驗證學號與姓名後，再進行驗證答案！'
     return
+  }
+
+  // 鎖定保存使用者目前的程式碼快照，確保驗證中與驗證完成後絕不重設 textarea 內容
+  const currentCodeSnapshot = {
+    html: code.value.html,
+    css: code.value.css,
+    js: code.value.js,
+  }
+  if (lesson.value?.id) {
+    saveDraftForLesson(lesson.value.id, currentCodeSnapshot)
   }
 
   isAiVerifying.value = true
@@ -435,7 +504,7 @@ async function runAiVerification() {
         checklist: practice.value.checklist,
         starterCode: practice.value.starterCode,
         answerCode: practice.value.answer,
-        studentCode: code.value,
+        studentCode: currentCodeSnapshot,
         onlineDurationMinutes: Math.max(1, Math.floor(onlineDurationSeconds.value / 60)),
       },
       (queueMsg) => {
@@ -455,6 +524,16 @@ async function runAiVerification() {
   } catch (error: any) {
     console.error('驗證失敗：', error)
   } finally {
+    // 確保 textarea 內容維持使用者撰寫的最新代碼，方便使用者繼續修改，不必從頭再寫
+    code.value = {
+      html: currentCodeSnapshot.html,
+      css: currentCodeSnapshot.css,
+      js: currentCodeSnapshot.js,
+    }
+    if (lesson.value?.id) {
+      saveDraftForLesson(lesson.value.id, code.value)
+    }
+
     isAiVerifying.value = false
     if (aiStepTimer) {
       clearInterval(aiStepTimer)
@@ -1114,9 +1193,9 @@ const previewDocument = computed(() => `<!doctype html>
                   <span v-if="panelHasError('js')" class="panel-error-dot" title="JS 有未通過項目">!</span>
                 </button>
               </div>
-              <textarea v-if="activePanel === 'html'" v-model="code.html" spellcheck="false" aria-label="HTML 編輯器" :class="{ 'textarea-has-error': panelHasError('html') }"></textarea>
-              <textarea v-else-if="activePanel === 'css'" v-model="code.css" spellcheck="false" aria-label="CSS 編輯器" :class="{ 'textarea-has-error': panelHasError('css') }"></textarea>
-              <textarea v-else v-model="code.js" spellcheck="false" aria-label="JavaScript 編輯器" :class="{ 'textarea-has-error': panelHasError('js') }"></textarea>
+              <textarea v-show="activePanel === 'html'" v-model="code.html" spellcheck="false" aria-label="HTML 編輯器" :class="{ 'textarea-has-error': panelHasError('html') }"></textarea>
+              <textarea v-show="activePanel === 'css'" v-model="code.css" spellcheck="false" aria-label="CSS 編輯器" :class="{ 'textarea-has-error': panelHasError('css') }"></textarea>
+              <textarea v-show="activePanel === 'js'" v-model="code.js" spellcheck="false" aria-label="JavaScript 編輯器" :class="{ 'textarea-has-error': panelHasError('js') }"></textarea>
             </div>
             <div class="preview-panel">
               <div class="preview-toolbar"><span><i></i> 即時預覽</span><small>輸入程式碼後會立即更新</small></div>
