@@ -915,7 +915,6 @@ h2 {
   gap: 12px;
   border-bottom: 1px solid var(--slate-100);
   padding-bottom: 12px;
-  margin-bottom: 14px;
 }
 
 .intro-label {
@@ -931,20 +930,27 @@ h2 {
   margin-bottom: 18px;
 }
 
+.review-heading {
+  margin-top: 24px;
+}
+
 .concept-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  width: 100%;
 }
 
 .concept-item {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 18px;
+  width: 100%;
+  box-sizing: border-box;
   background: var(--white);
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.02);
   transition: all var(--motion-duration-fast) var(--motion-ease-standard);
 }
@@ -952,15 +958,15 @@ h2 {
 .concept-item:hover {
   border-color: var(--blue-300);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.06);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .concept-item code {
   flex: 0 0 auto;
   color: var(--slate-800);
   background: var(--slate-100);
-  font-size: 0.8rem;
-  padding: 3px 8px;
+  font-size: 0.8125rem;
+  padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
   border: 1px solid var(--slate-200);
@@ -969,8 +975,18 @@ h2 {
 
 .concept-item span {
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   line-height: 1.5;
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .concept-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+  }
 }
 
 /* 先看範例卡片 (3D 立體亞光壓克力材質，圓角 24px) */

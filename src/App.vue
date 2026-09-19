@@ -1180,7 +1180,11 @@ const previewDocument = computed(() => `<!doctype html>
             <section class="intro-card">
               <div class="intro-heading"><span class="section-kicker">快速認識</span><span class="intro-label">先掌握關鍵概念，再開始練習</span></div>
               <div class="intro-text markdown-content" v-html="renderMarkdown(lesson.introduction)"></div>
-              <div class="concept-list">
+              <div v-if="lesson.concepts && lesson.concepts.length" class="intro-heading review-heading">
+                <span class="section-kicker">快速複習</span>
+                <span class="intro-label">重點語法與關鍵概念速覽</span>
+              </div>
+              <div v-if="lesson.concepts && lesson.concepts.length" class="concept-list">
                 <div v-for="concept in lesson.concepts" :key="concept.name" class="concept-item">
                   <code>{{ concept.name }}</code><span v-html="renderInlineMarkdown(concept.description)"></span>
                 </div>
