@@ -25,6 +25,14 @@ const savedProgress = JSON.parse(localStorage.getItem('completed-levels') || '{}
 const completedLessons = ref<Record<string, boolean>>(
   Object.fromEntries(Object.entries(savedProgress).map(([id, value]) => [id, Array.isArray(value) ? value.some(Boolean) : value])),
 )
+const savedScores = JSON.parse(localStorage.getItem('completed-scores') || '{}') as Record<string, number>
+const lessonScores = ref<Record<string, number>>(savedScores)
+
+function isLessonFailed(lessonId: string): boolean {
+  if (!completedLessons.value[lessonId]) return false
+  const score = lessonScores.value[lessonId]
+  return score !== undefined && score < 60
+}
 // 閒置逾時設定（30 分鐘無操作即視為閒置過久）
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000
 const STORAGE_KEY_LAST_ACTIVE = 'webcraft-last-active-at'
@@ -349,6 +357,20 @@ async function loadCurrentLessonSubmissions() {
           submitted_at_tw: twTime,
         }
       })
+
+      // 若有作答記錄，同步標記該單元已完成，並更新最高分
+      if (currentLessonSubmissions.value.length > 0 && lesson.value?.id) {
+        const lid = lesson.value.id
+        completedLessons.value = { ...completedLessons.value, [lid]: true }
+        localStorage.setItem('completed-levels', JSON.stringify(completedLessons.value))
+
+        const maxScore = Math.max(...currentLessonSubmissions.value.map((s) => s.score || 0))
+        const curScore = lessonScores.value[lid] ?? -1
+        if (maxScore > curScore) {
+          lessonScores.value = { ...lessonScores.value, [lid]: maxScore }
+          localStorage.setItem('completed-scores', JSON.stringify(lessonScores.value))
+        }
+      }
     }
   } catch (err) {
     console.warn('載入作答歷史失敗：', err)
@@ -511,10 +533,22 @@ async function runAiVerification() {
 
     aiResult.value = result
 
-    if (result.passed) {
-      completedLessons.value = { ...completedLessons.value, [lesson.value.id]: true }
+    // 無論得分多少（即使 0 分），均標記其有通過/完成這一課，並記錄最高分
+    if (lesson.value?.id) {
+      const currentId = lesson.value.id
+      completedLessons.value = { ...completedLessons.value, [currentId]: true }
       localStorage.setItem('completed-levels', JSON.stringify(completedLessons.value))
-      submissionMessage.value = '🎉 恭喜！實作練習已成功通過審核，已為你標記完成！'
+
+      const prevScore = lessonScores.value[currentId] ?? -1
+      const newScore = Math.max(prevScore, result.score)
+      lessonScores.value = { ...lessonScores.value, [currentId]: newScore }
+      localStorage.setItem('completed-scores', JSON.stringify(lessonScores.value))
+
+      if (result.score >= 60 || result.passed) {
+        submissionMessage.value = '🎉 恭喜！實作練習已成功通過審核，已為你標記完成！'
+      } else {
+        submissionMessage.value = '📝 已為你標記完成此課程（目前成績未及格，顯示黃色標記），可繼續修改程式碼再次挑戰！'
+      }
       aiQueueMessage.value = ''
       refreshPracticeStudents()
     }
@@ -1093,7 +1127,12 @@ const previewDocument = computed(() => `<!doctype html>
                 <span class="link-glow" aria-hidden="true"></span>
                 <span class="lesson-number">{{ item.number }}</span>
                 <span class="lesson-title-text sub-text">{{ item.title }}</span>
-                <span v-if="completedLessons[item.id]" class="done">
+                <span
+                  v-if="completedLessons[item.id]"
+                  class="done"
+                  :class="{ 'done-warning': isLessonFailed(item.id) }"
+                  :title="isLessonFailed(item.id) ? `已完成此課程（成績未及格：${lessonScores[item.id] ?? 0} 分）` : `已通過驗證（成績：${lessonScores[item.id] ?? 100} 分）`"
+                >
                   <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
@@ -1306,12 +1345,27 @@ const previewDocument = computed(() => `<!doctype html>
               </transition>
 
               <!-- 通過審核後自動標記完成狀態指示（非按鈕） -->
-              <div v-if="isCurrentComplete" class="auto-completed-badge" role="status">
-                <svg class="btn-svg" viewBox="0 0 24 24" width="16" height="16" stroke="#10b981" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+              <div
+                v-if="isCurrentComplete"
+                class="auto-completed-badge"
+                :class="{ 'badge-warning': isLessonFailed(lesson.id) }"
+                role="status"
+              >
+                <svg
+                  class="btn-svg"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  :stroke="isLessonFailed(lesson.id) ? '#eab308' : '#10b981'"
+                  stroke-width="2.5"
+                  fill="none"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                   <polyline points="22 4 12 14.01 9 11.01"></polyline>
                 </svg>
-                <span>已通過驗證</span>
+                <span>{{ isLessonFailed(lesson.id) ? `已完成課程 (不及格 ${lessonScores[lesson.id] ?? 0} 分)` : '已通過驗證' }}</span>
               </div>
             </div>
 

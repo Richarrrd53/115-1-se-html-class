@@ -708,6 +708,11 @@ pre code {
   z-index: 2;
 }
 
+.side-link.sub-link .done.done-warning {
+  color: #d97706;
+  background: #fef3c7;
+}
+
 @keyframes link-img {
   0% { transform: translateY(0) scaleX(1) scaleY(1); }
   30% { transform: translateY(0) scaleX(1.15) scaleY(0.85); }
@@ -1507,6 +1512,12 @@ iframe {
   border-radius: var(--radius-pill);
   font-size: var(--font-size-xs);
   font-weight: 700;
+}
+
+.auto-completed-badge.badge-warning {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #b45309;
 }
 
 /* 作答統計膠囊 */
