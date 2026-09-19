@@ -159,8 +159,22 @@ export const lessons: Lesson[] = topics.map((topic) => {
   const formatted = formatCodeSet(starterCode)
   return {
     id: `${stage}-${number}`, number, stage, type: stage === 1 ? 'HTML' : stage <= 4 ? 'CSS' : 'JavaScript', title, objective,
-    introduction: introductions[number].text, concepts: introductions[number].concepts,
-    example: { title: exampleTitle, description: '先觀察完整範例的結構，再到下方編輯器動手修改。', code: formatted.html, preview: formatted.html },
+    introduction: introductions[number].text,
+    concepts: introductions[number].concepts,
+    example: {
+      title: exampleTitle,
+      description: '先觀察完整範例的結構，再到下方編輯器動手修改。',
+      code: [
+        formatted.html,
+        formatted.css ? `/* CSS 樣式 */\n${formatted.css}` : '',
+        formatted.js ? `/* JavaScript 互動 */\n${formatted.js}` : '',
+      ].filter(Boolean).join('\n\n'),
+      preview: [
+        formatted.html,
+        formatted.css ? `<style>\n${formatted.css}\n</style>` : '',
+        formatted.js ? `<script>\n${formatted.js.replace(/<\//g, '<\\/')}\n<\/script>` : '',
+      ].filter(Boolean).join('\n'),
+    },
     practice: {
       instructions: challengeInstructions[number],
       starterCode: formatCodeSet(challengeStarters[number]),

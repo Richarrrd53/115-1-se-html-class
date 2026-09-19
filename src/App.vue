@@ -981,6 +981,39 @@ const previewDocument = computed(() => `<!doctype html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>${code.value.css}</style></head>
 <body>${code.value.html}<script>${code.value.js.replace(/<\//g, '<\\/')}<\/script></body></html>`)
+
+const examplePreviewDocument = computed(() => {
+  const raw = lesson.value?.example?.preview || ''
+  if (!raw) return ''
+  if (raw.includes('<!doctype') || raw.includes('<html')) {
+    return raw
+  }
+  return `<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+/* 隔離環境：不受主頁面 CSS 干擾 */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+html, body {
+  margin: 0;
+  padding: 16px;
+  background-color: #ffffff;
+  color: #1e293b;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+</style>
+</head>
+<body>
+${raw}
+</body>
+</html>`
+})
 </script>
 
 <template>
@@ -1194,7 +1227,15 @@ const previewDocument = computed(() => `<!doctype html>
             <section class="example-card">
               <div class="section-heading"><div><span class="section-kicker">先看範例</span><h2>{{ lesson.example.title }}</h2></div><span class="chip">可執行範例</span></div>
               <div class="example-desc markdown-content" v-html="renderMarkdown(lesson.example.description)"></div>
-              <div class="example-code"><pre><code>{{ lesson.example.code }}</code></pre><div class="example-preview" v-html="lesson.example.preview"></div></div>
+              <div class="example-code">
+                <pre><code>{{ lesson.example.code }}</code></pre>
+                <iframe
+                  class="example-preview"
+                  :srcdoc="examplePreviewDocument"
+                  title="範例即時預覽"
+                  sandbox="allow-scripts"
+                ></iframe>
+              </div>
             </section>
 
             <section class="challenge-card">
