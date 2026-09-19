@@ -12,6 +12,7 @@ export default defineConfig({
   base,
   plugins: [vue(), viteApiPlugin()],
   build: {
+    cssMinify: 'esbuild',
     rollupOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),

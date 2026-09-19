@@ -56,6 +56,7 @@ const emit = defineEmits<{
   gap: 12px;
   padding: 12px 18px;
   background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: var(--backdrop-glass-nav, blur(16px));
   backdrop-filter: var(--backdrop-glass-nav, blur(16px));
   border: 1px solid var(--color-border-default, #e2e8f0);
   border-radius: var(--radius-md, 12px);
