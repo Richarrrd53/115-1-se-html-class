@@ -60,7 +60,9 @@ async function handleLogin() {
     if (res.success) {
       isAuthenticated.value = true
       inputPassword.value = ''
-      loadStudentsData()
+      if (currentViewMode.value === 'grades') {
+        loadStudentsData()
+      }
     } else {
       authError.value = res.message
       triggerAuthShake()
@@ -92,7 +94,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeydown)
-  if (isAuthenticated.value) {
+  if (isAuthenticated.value && currentViewMode.value === 'grades') {
     loadStudentsData()
   }
 })
@@ -133,9 +135,12 @@ const selectedDetailStudent = ref<StudentAdminRecord | null>(null)
 const saveSuccessMessage = ref('')
 const isSavingAll = ref(false)
 
+let lastStudentsLoadTime = 0
+let isStudentsLoading = false
+
 function switchViewToGrades() {
   currentViewMode.value = 'grades'
-  if (studentsList.value.length === 0) {
+  if (studentsList.value.length === 0 || Date.now() - lastStudentsLoadTime > 60000) {
     loadStudentsData()
   }
 }
@@ -172,30 +177,28 @@ const overallAverageScore = computed(() => {
   return Math.round(total / scored.length)
 })
 
-async function loadStudentsData() {
+async function loadStudentsData(force: boolean | Event = false) {
+  const isForce = force === true
+  // 1. 若非強制重新整理且 60 秒內已載入過數據，直接使用記憶體中數據，不頻繁請求
+  if (!isForce && studentsList.value.length > 0 && Date.now() - lastStudentsLoadTime < 60000) {
+    return
+  }
+  if (isStudentsLoading) return
+  isStudentsLoading = true
   isLoadingStudents.value = true
   try {
-    const res = await fetch('/api/admin/students')
-    if (res.ok) {
-      const data = await res.json()
-      studentsList.value = data.map((s: any) => ({
-        ...s,
-        scores: s.scores || {},
-        completedLessons: s.completedLessons || {},
-        isDirty: false,
-      }))
-    } else {
-      await loadStudentsFallback()
-    }
-  } catch {
-    await loadStudentsFallback()
+    await fetchStudentsData()
+    lastStudentsLoadTime = Date.now()
+  } catch (err) {
+    console.warn('載入學生成績資料出錯：', err)
   } finally {
     isLoadingStudents.value = false
+    isStudentsLoading = false
   }
 }
 
-async function loadStudentsFallback() {
-  // 從 Supabase 與本地 COURSE_MEMBERS 合併
+async function fetchStudentsData() {
+  // 1. 初始化名單（以本地 COURSE_MEMBERS 為基礎）
   const memberMap = new Map<string, StudentAdminRecord>()
   for (const m of COURSE_MEMBERS) {
     memberMap.set(m.studentId.toLowerCase(), {
@@ -214,17 +217,58 @@ async function loadStudentsFallback() {
     })
   }
 
+  // 2. 從 course_members 補充學生資料（僅讀取必要欄位，不 select *）
   try {
-    const { data: subs } = await supabase.from('practice_submissions').select('*')
+    const { data: remoteMembers } = await supabase
+      .from('course_members')
+      .select('student_id, name, email')
+    if (remoteMembers && remoteMembers.length > 0) {
+      for (const rm of remoteMembers) {
+        if (!rm.student_id) continue
+        const normId = rm.student_id.toLowerCase()
+        const existing = memberMap.get(normId)
+        if (existing) {
+          if (rm.name) existing.name = rm.name
+          if (rm.email) existing.email = rm.email
+        } else {
+          memberMap.set(normId, {
+            studentId: rm.student_id,
+            name: rm.name,
+            email: rm.email || '',
+            group: '',
+            lastSeenAt: null,
+            onlineDurationMinutes: 0,
+            scores: {},
+            completedLessons: {},
+            completedCount: 0,
+            averageScore: 0,
+            submissionsCount: 0,
+            isDirty: false,
+          })
+        }
+      }
+    }
+  } catch {}
+
+  // 3. 查詢實際作業作答紀錄（絕不 select *，徹底排除 code 與 ai_feedback 等大量文本欄位，排除心跳與系統備份）
+  try {
+    const { data: subs } = await supabase
+      .from('practice_submissions')
+      .select('student_id, student_name, lesson_id, score, completed, online_duration_minutes, created_at')
+      .neq('student_id', '__SYSTEM_COURSE_DATA__')
+      .neq('lesson_id', '__HEARTBEAT__')
+      .order('created_at', { ascending: false })
+      .limit(2000)
+
     if (subs) {
       for (const sub of subs) {
-        if (sub.student_id === '__SYSTEM_COURSE_DATA__') continue
-        const normId = (sub.student_id || '').toLowerCase()
+        if (!sub.student_id || sub.student_id === '__SYSTEM_COURSE_DATA__') continue
+        const normId = sub.student_id.toLowerCase()
         let st = memberMap.get(normId)
         if (!st) {
           st = {
             studentId: sub.student_id,
-            name: sub.student_name,
+            name: sub.student_name || sub.student_id,
             email: '',
             group: '',
             lastSeenAt: null,
@@ -238,33 +282,20 @@ async function loadStudentsFallback() {
           }
           memberMap.set(normId, st)
         }
-        if (sub.lesson_id !== '__HEARTBEAT__') {
-          st.submissionsCount++
-        }
-        
-        // 優先從獨立欄位讀取，若無則從 code.__meta 解析（相容尚未擴展 schema 的資料庫）
-        let subScore = typeof sub.score === 'number' ? sub.score : null
-        let subCompleted = typeof sub.completed === 'boolean' ? sub.completed : null
-        let subDuration = typeof sub.online_duration_minutes === 'number' ? sub.online_duration_minutes : null
 
-        if (subScore === null || subCompleted === null) {
-          try {
-            const parsedCode = JSON.parse(sub.code || '{}')
-            if (parsedCode.__meta) {
-              if (subScore === null && typeof parsedCode.__meta.score === 'number') subScore = parsedCode.__meta.score
-              if (subCompleted === null && typeof parsedCode.__meta.completed === 'boolean') subCompleted = parsedCode.__meta.completed
-              if (subDuration === null && typeof parsedCode.__meta.online_duration_minutes === 'number') subDuration = parsedCode.__meta.online_duration_minutes
-            }
-          } catch {}
-        }
+        st.submissionsCount++
 
-        if (subScore && subScore > 0) {
+        const subScore = typeof sub.score === 'number' ? sub.score : 0
+        const subCompleted = typeof sub.completed === 'boolean' ? sub.completed : false
+        const subDuration = typeof sub.online_duration_minutes === 'number' ? sub.online_duration_minutes : 0
+
+        if (subScore > 0) {
           st.scores[sub.lesson_id] = Math.max(st.scores[sub.lesson_id] || 0, subScore)
         }
-        if (subCompleted) {
+        if (subCompleted || subScore >= 80) {
           st.completedLessons[sub.lesson_id] = true
         }
-        if (subDuration) {
+        if (subDuration > 0) {
           st.onlineDurationMinutes = Math.max(st.onlineDurationMinutes, subDuration)
         }
         if (!st.lastSeenAt || new Date(sub.created_at) > new Date(st.lastSeenAt)) {
@@ -273,9 +304,38 @@ async function loadStudentsFallback() {
       }
     }
   } catch (err) {
-    console.warn('載入 Supabase 紀錄略過：', err)
+    console.warn('載入作業作答紀錄略過：', err)
   }
 
+  // 4. 僅查詢近期心跳紀錄以獲取學生最新活躍時間與在線時長（僅查詢必要 3 個輕量欄位，並加上 limit 限制，防止全文掃描超時）
+  try {
+    const { data: heartbeats } = await supabase
+      .from('practice_submissions')
+      .select('student_id, online_duration_minutes, created_at')
+      .eq('lesson_id', '__HEARTBEAT__')
+      .order('created_at', { ascending: false })
+      .limit(1000)
+
+    if (heartbeats) {
+      for (const hb of heartbeats) {
+        if (!hb.student_id) continue
+        const normId = hb.student_id.toLowerCase()
+        const st = memberMap.get(normId)
+        if (st) {
+          if (typeof hb.online_duration_minutes === 'number' && hb.online_duration_minutes > 0) {
+            st.onlineDurationMinutes = Math.max(st.onlineDurationMinutes, hb.online_duration_minutes)
+          }
+          if (!st.lastSeenAt || new Date(hb.created_at) > new Date(st.lastSeenAt)) {
+            st.lastSeenAt = hb.created_at
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('載入心跳紀錄略過：', err)
+  }
+
+  // 5. 彙整統計各學生平均分與完成單元數
   studentsList.value = Array.from(memberMap.values()).map((st) => {
     st.completedCount = Object.values(st.completedLessons).filter(Boolean).length
     const scoreVals = Object.values(st.scores) as number[]
@@ -1311,6 +1371,15 @@ function handleResetDefault() {
               class="input-control"
             />
           </div>
+          <button
+            class="btn btn-outline btn-sm"
+            :disabled="isLoadingStudents"
+            @click="() => loadStudentsData(true)"
+            title="手動重新整理學生最新成績與上線數據"
+          >
+            <span v-if="isLoadingStudents">⏳ 載入中...</span>
+            <span v-else>🔄 重新整理數據</span>
+          </button>
         </div>
       </div>
 

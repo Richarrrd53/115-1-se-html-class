@@ -257,10 +257,11 @@ async function loadCurrentLessonSubmissions() {
   try {
     const { data, error } = await supabase
       .from('practice_submissions')
-      .select('*')
+      .select('id, student_id, student_name, lesson_id, score, completed, ai_feedback, code, online_duration_minutes, created_at')
       .eq('student_id', trimmedId)
       .eq('lesson_id', lesson.value.id)
       .order('created_at', { ascending: false })
+      .limit(30)
 
     if (!error && data) {
       currentLessonSubmissions.value = data
