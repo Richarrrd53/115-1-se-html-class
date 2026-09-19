@@ -336,7 +336,7 @@ export async function recordSubmissionToSupabase(
   try {
     const taiwanTime = getTaiwanTimeString()
 
-    // 1. 優先嘗試寫入全欄位
+    // 1. 優先嘗試寫入全欄位 (created_at 由資料庫預設 now() 自動產生)
     const { error } = await supabase.from('practice_submissions').insert({
       student_id: payload.studentId,
       student_name: payload.studentName,
@@ -345,7 +345,6 @@ export async function recordSubmissionToSupabase(
       completed: result.passed,
       score: result.score,
       ai_feedback: `${result.summary}\n${result.feedback || ''}`,
-      submitted_at_tw: taiwanTime,
     })
 
     // 2. 若資料表尚未擴展欄位（PGRST204 400 Bad Request），退回基本欄位並將成績存入 code.__meta

@@ -410,8 +410,13 @@ export function saveCourseData() {
   broadcastCourseData()
 }
 
-// 頁面載入時自動在背景嘗試從資料庫同步最新教材，切換視窗時自動重新檢查
-if (typeof window !== 'undefined') {
+// 頁面載入時自動在背景嘗試從資料庫同步最新教材，切換視窗時自動重新檢查（管理員編輯模式下停用，避免覆蓋編輯中的內容）
+const isEditPage = typeof window !== 'undefined' && (
+  window.location.pathname.includes('edit') ||
+  window.location.pathname.endsWith('edit.html')
+)
+
+if (typeof window !== 'undefined' && !isEditPage) {
   syncCourseDataFromDatabase()
 
   let lastFocusSync = 0
@@ -425,7 +430,7 @@ if (typeof window !== 'undefined') {
 }
 
 // 監聽來自其他視窗（例如 edit.html -> index.html iframe）的 postMessage
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !isEditPage) {
   window.addEventListener('message', (event) => {
     if (event.source === window) return
     if (event.data && event.data.type === 'WEBCRAFT_COURSES_UPDATED' && event.data.data) {

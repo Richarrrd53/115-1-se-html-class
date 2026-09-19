@@ -33,7 +33,6 @@ ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS completed BOOLEAN DEFA
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS score INT DEFAULT 0;
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
 ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS online_duration_minutes INT DEFAULT 0;
-ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS submitted_at_tw VARCHAR(30);
 
 CREATE INDEX IF NOT EXISTS practice_submissions_lesson_id_idx ON practice_submissions (lesson_id);
 

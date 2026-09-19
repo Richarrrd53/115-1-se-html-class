@@ -501,6 +501,33 @@
   animation: presence-pulse 1.8s infinite ease-in-out;
 }
 
+.live-dot.off {
+  background: var(--slate-400);
+  animation: none;
+}
+
+.auto-refresh-toggle-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--color-border-default, #cbd5e1);
+  background: var(--slate-100, #f1f5f9);
+  color: var(--color-text-secondary, #64748b);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--motion-duration-fast);
+}
+
+.auto-refresh-toggle-btn:hover {
+  background: var(--slate-200, #e2e8f0);
+}
+
+.auto-refresh-toggle-btn.active {
+  background: var(--emerald-50, #ecfdf5);
+  border-color: var(--emerald-300, #6ee7b7);
+  color: var(--emerald-700, #047857);
+}
+
 .preview-controls {
   display: flex;
   align-items: center;

@@ -210,9 +210,10 @@ async function loadCurrentLessonSubmissions() {
         } catch {}
 
         const twTime =
+          (item.created_at ? getTaiwanTimeString(new Date(item.created_at)) : '') ||
           item.submitted_at_tw ||
           meta?.submitted_at_tw ||
-          (item.created_at ? getTaiwanTimeString(new Date(item.created_at)) : '')
+          ''
         const finalScore = typeof item.score === 'number' ? item.score : (meta?.score || 0)
         const finalFeedback = item.ai_feedback || meta?.ai_feedback || ''
         const finalCompleted = Boolean(item.completed || meta?.completed)

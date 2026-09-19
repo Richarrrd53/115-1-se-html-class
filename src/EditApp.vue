@@ -392,7 +392,6 @@ const sidebarCollapsed = ref(false)
 
 // 教材雲端同步狀態
 const courseSaveStatus = ref('')
-let courseAutoSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 async function handleSaveCourseToDb() {
   courseSaveStatus.value = '正在儲存教材至雲端資料庫...'
@@ -420,16 +419,17 @@ async function handleReloadCourseFromDb() {
   }, 4000)
 }
 
-// 深度監聽目前編輯的內容，自動觸發儲存與 iframe 同步，並防抖上傳資料庫
+// 預覽是否自動刷新（預設關閉，由管理員手動點擊「重整預覽」或開啟此開關）
+const autoRefreshPreview = ref(false)
+
+// 監聽目前編輯的內容，儲存至本機 localStorage；若開啟自動刷新則即時同步至 iframe
 watch(
   [stages, lessons],
   () => {
     saveCourseData()
-    syncToIframe()
-    if (courseAutoSaveTimer) clearTimeout(courseAutoSaveTimer)
-    courseAutoSaveTimer = setTimeout(() => {
-      saveCourseDataToDatabase()
-    }, 2000)
+    if (autoRefreshPreview.value) {
+      syncToIframe()
+    }
   },
   { deep: true },
 )
@@ -468,6 +468,7 @@ function syncToIframe() {
 }
 
 function reloadPreview() {
+  syncToIframe()
   if (previewIframe.value) {
     previewIframe.value.src = `${baseUrl}index.html?lesson=${selectedLessonId.value}&t=${Date.now()}`
   }
@@ -1171,9 +1172,17 @@ function handleResetDefault() {
       <section class="editor-right-pane">
         <div class="preview-header-bar">
           <div class="preview-title-tag">
-            <span class="live-dot"></span>
+            <span class="live-dot" :class="{ off: !autoRefreshPreview }"></span>
             <strong>即時外觀預覽 (index.html)</strong>
-            <small>左側編輯自動無延遲套用</small>
+            <button
+              type="button"
+              class="auto-refresh-toggle-btn"
+              :class="{ active: autoRefreshPreview }"
+              :title="autoRefreshPreview ? '已啟用自動刷新預覽（點擊關閉）' : '已關閉自動刷新預覽（點擊開啟）'"
+              @click="autoRefreshPreview = !autoRefreshPreview"
+            >
+              自動刷新：{{ autoRefreshPreview ? '開' : '關' }}
+            </button>
           </div>
 
           <div class="preview-controls">
@@ -1201,8 +1210,8 @@ function handleResetDefault() {
               </button>
             </div>
 
-            <button class="btn-icon" title="重整預覽" @click="reloadPreview">
-              🔄
+            <button class="btn btn-outline btn-sm" title="立即同步並重整預覽" @click="reloadPreview">
+              🔄 立即重整預覽
             </button>
           </div>
         </div>
