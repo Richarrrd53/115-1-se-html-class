@@ -28,6 +28,7 @@ export interface VerifyPracticePayload {
   starterCode?: { html?: string; css?: string; js?: string }
   answerCode?: { html?: string; css?: string; js?: string }
   studentCode: { html: string; css: string; js: string }
+  onlineDurationMinutes?: number
 }
 
 /**
@@ -335,6 +336,7 @@ export async function recordSubmissionToSupabase(
 ) {
   try {
     const taiwanTime = getTaiwanTimeString()
+    const durationMinutes = payload.onlineDurationMinutes || 0
 
     // 1. 優先嘗試寫入全欄位 (created_at 由資料庫預設 now() 自動產生)
     const { error } = await supabase.from('practice_submissions').insert({
@@ -345,6 +347,7 @@ export async function recordSubmissionToSupabase(
       completed: result.passed,
       score: result.score,
       ai_feedback: `${result.summary}\n${result.feedback || ''}`,
+      online_duration_minutes: durationMinutes,
     })
 
     // 2. 若資料表尚未擴展欄位（PGRST204 400 Bad Request），退回基本欄位並將成績存入 code.__meta
@@ -360,11 +363,13 @@ export async function recordSubmissionToSupabase(
             score: result.score,
             ai_feedback: `${result.summary}\n${result.feedback || ''}`,
             submitted_at_tw: taiwanTime,
+            online_duration_minutes: durationMinutes,
           },
         }),
         completed: result.passed,
         score: result.score,
         ai_feedback: `${result.summary}\n${result.feedback || ''}`,
+        online_duration_minutes: durationMinutes,
       })
     }
   } catch {

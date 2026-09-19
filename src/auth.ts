@@ -42,24 +42,6 @@ export function setEditorAuthenticated(authenticated: boolean) {
 export async function verifyEditorPassword(plainPassword: string): Promise<{ success: boolean; message: string }> {
   const inputHash = await hashPassword(plainPassword)
 
-  // 1. 優先嘗試透過後端 API (Node / Express / server) 驗證
-  try {
-    const res = await fetch('/api/auth/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passwordHash: inputHash }),
-    })
-    if (res.ok) {
-      const data = (await res.json()) as { success?: boolean }
-      if (data.success) {
-        setEditorAuthenticated(true)
-        return { success: true, message: '驗證成功！' }
-      }
-    }
-  } catch {
-    // 後端未啟動時繼續嘗試 Supabase
-  }
-
   // 2. 嘗試透過 Supabase admin_auth 資料表查詢
   try {
     const { data, error } = await supabase

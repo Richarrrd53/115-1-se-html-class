@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 
 import {
   stages,
@@ -32,10 +32,25 @@ const isAuthenticated = ref(isEditorAuthenticated())
 const inputPassword = ref('')
 const authError = ref('')
 const isVerifying = ref(false)
+const isAuthShaking = ref(false)
+let authShakeTimer: ReturnType<typeof setTimeout> | null = null
+
+function triggerAuthShake() {
+  if (authShakeTimer) clearTimeout(authShakeTimer)
+  isAuthShaking.value = false
+  requestAnimationFrame(() => {
+    isAuthShaking.value = true
+    authShakeTimer = setTimeout(() => {
+      isAuthShaking.value = false
+      authShakeTimer = null
+    }, 420)
+  })
+}
 
 async function handleLogin() {
   if (!inputPassword.value) {
     authError.value = '請輸入管理密碼！'
+    triggerAuthShake()
     return
   }
   isVerifying.value = true
@@ -48,18 +63,43 @@ async function handleLogin() {
       loadStudentsData()
     } else {
       authError.value = res.message
+      triggerAuthShake()
     }
   } catch (err: any) {
     authError.value = err?.message || '驗證失敗'
+    triggerAuthShake()
   } finally {
     isVerifying.value = false
   }
 }
 
+async function handleAuthOverlayClick() {
+  if (isVerifying.value) return
+  await handleLogin()
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (!isAuthenticated.value) {
+      handleAuthOverlayClick()
+      return
+    }
+    if (selectedDetailStudent.value) selectedDetailStudent.value = null
+    if (showStageModal.value) showStageModal.value = false
+    if (showExportModal.value) showExportModal.value = false
+  }
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', handleGlobalKeydown)
   if (isAuthenticated.value) {
     loadStudentsData()
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
+  if (authShakeTimer) clearTimeout(authShakeTimer)
 })
 
 function handleLock() {
@@ -198,7 +238,9 @@ async function loadStudentsFallback() {
           }
           memberMap.set(normId, st)
         }
-        st.submissionsCount++
+        if (sub.lesson_id !== '__HEARTBEAT__') {
+          st.submissionsCount++
+        }
         
         // 優先從獨立欄位讀取，若無則從 code.__meta 解析（相容尚未擴展 schema 的資料庫）
         let subScore = typeof sub.score === 'number' ? sub.score : null
@@ -470,7 +512,7 @@ function syncToIframe() {
 function reloadPreview() {
   syncToIframe()
   if (previewIframe.value) {
-    previewIframe.value.src = `${baseUrl}index.html?lesson=${selectedLessonId.value}&t=${Date.now()}`
+    previewIframe.value.src = `${baseUrl}index.html?lesson=${selectedLessonId.value}&adminPreview=true&t=${Date.now()}`
   }
 }
 
@@ -607,30 +649,41 @@ function handleResetDefault() {
 <template>
   <div class="editor-app-shell">
     <!-- 密碼驗證鎖定對話框 -->
-    <div v-if="!isAuthenticated" class="modal-overlay auth-lock-overlay">
-      <div class="modal-box auth-lock-box">
-        <div class="modal-header">
-          <div class="auth-title">
-            <span class="lock-icon">🔐</span>
-            <h3>教材編輯器身分驗證</h3>
+    <transition name="sys-modal" :duration="450">
+      <div
+        v-if="!isAuthenticated"
+        class="modal-overlay auth-lock-overlay"
+        @click.self="handleAuthOverlayClick"
+      >
+        <form
+          class="modal-box auth-lock-box"
+          :class="{ 'is-shaking': isAuthShaking }"
+          @submit.prevent="handleLogin"
+        >
+          <div class="modal-header">
+            <div class="auth-title">
+              <span class="lock-icon">🔐</span>
+              <h3>教材編輯器身分驗證</h3>
+            </div>
           </div>
-        </div>
-        <form class="modal-body auth-lock-body" @submit.prevent="handleLogin">
-          <p class="auth-desc">本頁面提供課程內容管理與編輯功能，請輸入管理密碼以解鎖操作。</p>
-          <div class="form-field">
-            <label for="admin-pass">編輯權限密碼</label>
-            <input
-              id="admin-pass"
-              v-model="inputPassword"
-              type="password"
-              class="input-control"
-              placeholder="請輸入密碼..."
-              autocomplete="current-password"
-              autofocus
-            />
+          <div class="modal-body auth-lock-body">
+            <p class="auth-desc">本頁面提供課程內容管理與編輯功能，請輸入管理密碼以解鎖操作。</p>
+            <div class="form-field">
+              <label for="admin-pass">編輯權限密碼</label>
+              <input
+                id="admin-pass"
+                v-model="inputPassword"
+                type="password"
+                class="input-control"
+                placeholder="請輸入密碼..."
+                autocomplete="current-password"
+                :disabled="isVerifying"
+                autofocus
+              />
+            </div>
+            <p v-if="authError" class="auth-error-msg" role="alert">{{ authError }}</p>
           </div>
-          <p v-if="authError" class="auth-error-msg" role="alert">{{ authError }}</p>
-          <div class="auth-actions">
+          <div class="modal-footer auth-actions">
             <button class="btn btn-primary btn-block" type="submit" :disabled="isVerifying">
               {{ isVerifying ? '驗證中...' : '🔓 解鎖編輯功能' }}
             </button>
@@ -638,7 +691,7 @@ function handleResetDefault() {
           </div>
         </form>
       </div>
-    </div>
+    </transition>
 
     <!-- 頂部工具導航列 -->
     <header class="editor-header">
@@ -1219,7 +1272,7 @@ function handleResetDefault() {
         <div class="iframe-container-wrapper" :class="previewDevice">
           <iframe
             ref="previewIframe"
-            :src="`${baseUrl}index.html?lesson=${selectedLessonId}`"
+            :src="`${baseUrl}index.html?lesson=${selectedLessonId}&adminPreview=true`"
             class="live-preview-frame"
             @load="onIframeLoad"
           ></iframe>
@@ -1285,12 +1338,12 @@ function handleResetDefault() {
           <thead>
             <tr>
               <th style="width: 120px">學號</th>
-              <th style="width: 140px">姓名 (可修改)</th>
+              <th style="width: 140px">姓名</th>
               <th style="width: 160px">最近上線時間</th>
-              <th style="width: 140px">上線時長</th>
+              <th style="width: 130px">上線時長</th>
               <th style="width: 120px">完成進度</th>
               <th style="width: 110px">平均分數</th>
-              <th>各單元得分 (可直接修改)</th>
+              <th>各單元得分</th>
               <th style="width: 140px">操作</th>
             </tr>
           </thead>
@@ -1304,12 +1357,7 @@ function handleResetDefault() {
                 <span class="student-id-code">{{ st.studentId }}</span>
               </td>
               <td>
-                <input
-                  v-model="st.name"
-                  class="input-control table-input"
-                  placeholder="姓名"
-                  @input="st.isDirty = true"
-                />
+                <span class="student-name-text">{{ st.name }}</span>
               </td>
               <td>
                 <span class="last-seen-tag" :class="{ 'is-active': st.lastSeenAt }">
@@ -1317,16 +1365,7 @@ function handleResetDefault() {
                 </span>
               </td>
               <td>
-                <div class="duration-input-wrapper">
-                  <input
-                    type="number"
-                    min="0"
-                    v-model.number="st.onlineDurationMinutes"
-                    class="input-control table-input duration-input"
-                    @input="st.isDirty = true"
-                  />
-                  <span>分</span>
-                </div>
+                <span class="duration-display-badge">⏱️ {{ st.onlineDurationMinutes || 0 }} 分</span>
               </td>
               <td>
                 <span class="progress-badge">
@@ -1339,25 +1378,37 @@ function handleResetDefault() {
                 </strong>
               </td>
               <td>
-                <!-- 橫向滑動展示各單元成績輸入框 -->
-                <div class="unit-scores-scroll">
-                  <div
-                    v-for="l in lessons"
-                    :key="l.id"
-                    class="unit-score-item"
-                    :title="`${l.title} (單元 ${l.number})`"
-                  >
-                    <span class="unit-label">{{ l.number }}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder="—"
-                      v-model.number="st.scores[l.id]"
-                      class="unit-score-input"
-                      @input="st.isDirty = true"
-                    />
-                  </div>
+                <!-- 橫向各單元成績表格呈現，未及格呈現紅色 -->
+                <div class="unit-scores-table-wrapper">
+                  <table class="unit-scores-table">
+                    <thead>
+                      <tr>
+                        <th v-for="l in lessons" :key="l.id" :title="l.title">
+                          {{ l.number }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td
+                          v-for="l in lessons"
+                          :key="l.id"
+                          :title="`${l.title} (單元 ${l.number}): ${st.scores[l.id] !== undefined && st.scores[l.id] !== null ? st.scores[l.id] + ' 分' : '未評分'}`"
+                        >
+                          <span
+                            class="unit-score-pill"
+                            :class="{
+                              'score-pass': st.scores[l.id] !== undefined && st.scores[l.id] !== null && st.scores[l.id] >= 60,
+                              'score-fail': st.scores[l.id] !== undefined && st.scores[l.id] !== null && st.scores[l.id] < 60,
+                              'score-empty': st.scores[l.id] === undefined || st.scores[l.id] === null
+                            }"
+                          >
+                            {{ st.scores[l.id] !== undefined && st.scores[l.id] !== null ? st.scores[l.id] : '—' }}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </td>
               <td>
@@ -1397,126 +1448,122 @@ function handleResetDefault() {
     </div>
 
     <!-- 學生詳細單元評分與作答抽屜/彈窗 -->
-    <div v-if="selectedDetailStudent" class="modal-overlay" @click.self="selectedDetailStudent = null">
-      <div class="modal-box modal-lg">
-        <div class="modal-header">
-          <div>
-            <span class="section-kicker">學生詳細成績管理</span>
-            <h3>【{{ selectedDetailStudent.name }} ({{ selectedDetailStudent.studentId }})】各單元評分與記錄</h3>
+    <transition name="sys-modal" :duration="450">
+      <div v-if="selectedDetailStudent" class="modal-overlay" @click.self="selectedDetailStudent = null">
+        <div class="modal-box modal-lg">
+          <div class="modal-header">
+            <div>
+              <span class="section-kicker">學生詳細成績管理</span>
+              <h3>【{{ selectedDetailStudent.name }} ({{ selectedDetailStudent.studentId }})】各單元評分與記錄</h3>
+            </div>
           </div>
-          <button class="modal-close" @click="selectedDetailStudent = null">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="detail-overview-bar">
-            <span>累積上線時長：<strong>{{ selectedDetailStudent.onlineDurationMinutes }} 分鐘</strong></span>
-            <span>最近活躍：<strong>{{ formatDate(selectedDetailStudent.lastSeenAt) }}</strong></span>
-            <span>已完成題數：<strong>{{ selectedDetailStudent.completedCount }} / {{ lessons.length }}</strong></span>
-          </div>
+          <div class="modal-body">
+            <div class="detail-overview-bar">
+              <span>累積上線時長：<strong>{{ selectedDetailStudent.onlineDurationMinutes }} 分鐘</strong></span>
+              <span>最近活躍：<strong>{{ formatDate(selectedDetailStudent.lastSeenAt) }}</strong></span>
+              <span>已完成題數：<strong>{{ selectedDetailStudent.completedCount }} / {{ lessons.length }}</strong></span>
+            </div>
 
-          <div class="detail-lessons-list">
-            <div v-for="l in lessons" :key="l.id" class="detail-lesson-row">
-              <div class="detail-lesson-title">
-                <span class="lesson-badge">單元 {{ l.number }}</span>
-                <strong>{{ l.title }}</strong>
-              </div>
-              <div class="detail-lesson-inputs">
-                <label class="detail-check-label">
-                  <input
-                    type="checkbox"
-                    v-model="selectedDetailStudent.completedLessons[l.id]"
-                    @change="selectedDetailStudent.isDirty = true"
-                  />
-                  <span>標記完成</span>
-                </label>
-                <div class="detail-score-box">
-                  <label>得分：</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="未評分"
-                    v-model.number="selectedDetailStudent.scores[l.id]"
-                    class="input-control score-number-input"
-                    @input="selectedDetailStudent.isDirty = true"
-                  />
-                  <span>分</span>
+            <div class="detail-lessons-list">
+              <div v-for="l in lessons" :key="l.id" class="detail-lesson-row">
+                <div class="detail-lesson-title">
+                  <span class="lesson-badge">單元 {{ l.number }}</span>
+                  <strong>{{ l.title }}</strong>
+                </div>
+                <div class="detail-lesson-inputs">
+                  <label class="detail-check-label">
+                    <input
+                      type="checkbox"
+                      v-model="selectedDetailStudent.completedLessons[l.id]"
+                      @change="selectedDetailStudent.isDirty = true"
+                    />
+                    <span>標記完成</span>
+                  </label>
+                  <div class="detail-score-box">
+                    <label>得分：</label>
+                    <span
+                      class="detail-score-display"
+                      :class="{
+                        'score-pass': selectedDetailStudent.scores[l.id] !== undefined && selectedDetailStudent.scores[l.id] !== null && selectedDetailStudent.scores[l.id] >= 60,
+                        'score-fail': selectedDetailStudent.scores[l.id] !== undefined && selectedDetailStudent.scores[l.id] !== null && selectedDetailStudent.scores[l.id] < 60
+                      }"
+                    >
+                      {{ selectedDetailStudent.scores[l.id] !== undefined && selectedDetailStudent.scores[l.id] !== null ? `${selectedDetailStudent.scores[l.id]} 分` : '未評分' }}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-outline" @click="selectedDetailStudent = null">關閉</button>
-          <button class="btn btn-primary" @click="closeStudentDetail">💾 儲存此學生紀錄</button>
+          <div class="modal-footer">
+            <button class="btn btn-outline" @click="selectedDetailStudent = null">關閉</button>
+            <button class="btn btn-primary" @click="closeStudentDetail">💾 儲存此學生紀錄</button>
+          </div>
         </div>
       </div>
-    </div>
+    </transition>
 
     <!-- 階段管理彈窗 (Stage Modal) -->
-    <div v-if="showStageModal" class="modal-overlay" @click.self="showStageModal = false">
-      <div class="modal-box">
-        <div class="modal-header">
-          <h3>課程階段管理 (Stages)</h3>
-          <button class="modal-close" @click="showStageModal = false">✕</button>
-        </div>
-
-        <div class="modal-body">
-          <div class="add-stage-form">
-            <input
-              v-model="newStageTitle"
-              placeholder="新增階段名稱 (例如: 階段六 · 進階前端框架)"
-              class="input-control"
-              @keyup.enter="handleAddStage"
-            />
-            <button class="btn btn-primary" @click="handleAddStage">新增</button>
+    <transition name="sys-modal" :duration="450">
+      <div v-if="showStageModal" class="modal-overlay" @click.self="showStageModal = false">
+        <div class="modal-box">
+          <div class="modal-header">
+            <h3>課程階段管理 (Stages)</h3>
           </div>
 
-          <div class="stage-list">
-            <div v-for="s in stages" :key="s.id" class="stage-item-row">
-              <span class="stage-id-badge">ID: {{ s.id }}</span>
+          <div class="modal-body">
+            <div class="add-stage-form">
               <input
-                v-model="s.title"
-                class="input-control stage-title-edit"
-                @change="updateStage(s.id, s.title)"
+                v-model="newStageTitle"
+                placeholder="新增階段名稱 (例如: 階段六 · 進階前端框架)"
+                class="input-control"
+                @keyup.enter="handleAddStage"
               />
-              <span class="stage-count">
-                ({{ lessons.filter(l => l.stage === s.id).length }} 單元)
-              </span>
-              <button
-                class="btn-icon-danger"
-                title="刪除階段"
-                @click="handleDeleteStage(s.id)"
-              >
-                🗑️
-              </button>
+              <button class="btn btn-primary" @click="handleAddStage">新增</button>
+            </div>
+
+            <div class="stage-list">
+              <div v-for="s in stages" :key="s.id" class="stage-item-row">
+                <span class="stage-id-badge">ID: {{ s.id }}</span>
+                <input
+                  v-model="s.title"
+                  class="input-control stage-title-edit"
+                  @change="updateStage(s.id, s.title)"
+                />
+                <span class="stage-count">
+                  ({{ lessons.filter(l => l.stage === s.id).length }} 單元)
+                </span>
+                <button
+                  class="btn-icon-danger"
+                  title="刪除階段"
+                  @click="handleDeleteStage(s.id)"
+                >
+                  🗑️
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="modal-footer">
-          <button class="btn btn-primary" @click="showStageModal = false">完成</button>
+          <div class="modal-footer">
+            <button class="btn btn-primary" @click="showStageModal = false">完成</button>
+          </div>
         </div>
       </div>
-    </div>
+    </transition>
 
     <!-- 匯出 lessons.ts 程式碼彈窗 (Export Modal) -->
-    <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
-      <div class="modal-box modal-lg">
-        <div class="modal-header">
-          <h3>匯出 src/lessons.ts 原始碼</h3>
-          <button class="modal-close" @click="showExportModal = false">✕</button>
-        </div>
+    <transition name="sys-modal" :duration="450">
+      <div v-if="showExportModal" class="modal-overlay" @click.self="showExportModal = false">
+        <div class="modal-box modal-lg">
+          <div class="modal-header">
+            <h3>匯出 src/lessons.ts 原始碼</h3>
+          </div>
 
-        <div class="modal-body">
-          <p class="export-tip">
-            下方已將您目前的教材與階段資料自動生成為標準的 TypeScript 原始碼。您可以直接下載檔案或複製全部代碼，取代專案內的
-            <code>src/lessons.ts</code>，即可永久儲存至程式庫並提交 Git！
-          </p>
+          <div class="modal-body">
+            <p class="export-tip">
+              下方已將您目前的教材與階段資料自動生成為標準的 TypeScript 原始碼。您可以直接下載檔案或複製全部代碼，取代專案內的
+              <code>src/lessons.ts</code>，即可永久儲存至程式庫並提交 Git！
+            </p>
 
           <div class="export-actions-bar">
             <button class="btn btn-primary" @click="copyExportedCode">
@@ -1541,5 +1588,6 @@ function handleResetDefault() {
         </div>
       </div>
     </div>
+    </transition>
   </div>
 </template>

@@ -24,11 +24,74 @@ const savedProgress = JSON.parse(localStorage.getItem('completed-levels') || '{}
 const completedLessons = ref<Record<string, boolean>>(
   Object.fromEntries(Object.entries(savedProgress).map(([id, value]) => [id, Array.isArray(value) ? value.some(Boolean) : value])),
 )
-const studentId = ref(localStorage.getItem('webcraft-student-id') || '')
-const studentName = ref(localStorage.getItem('webcraft-student-name') || '')
-const showStudentProfileModal = ref(!studentId.value.trim() || !studentName.value.trim())
-const studentProfileError = ref('')
+// 閒置逾時設定（30 分鐘無操作即視為閒置過久）
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000
+const STORAGE_KEY_LAST_ACTIVE = 'webcraft-last-active-at'
+
+// ==================== 判斷是否處於管理員或預覽模式 ====================
+function isAdminOrPreviewMode(): boolean {
+  if (typeof window === 'undefined') return false
+  // 1. 檢查是否在 iframe 中（管理員教材編輯器的即時預覽）
+  const inIframe = window.self !== window.top
+  // 2. 檢查 URL 參數中是否包含管理員預覽標記
+  const urlParams = new URLSearchParams(window.location.search)
+  const hasAdminParam =
+    urlParams.get('adminPreview') === 'true' ||
+    urlParams.get('preview') === 'admin' ||
+    urlParams.get('mode') === 'admin'
+  // 3. 檢查目前是否在管理員頁面路徑 (edit.html)
+  const isAdminPath =
+    window.location.pathname.includes('edit.html') ||
+    window.location.pathname.endsWith('/edit')
+  // 4. 檢查目前會話是否處於管理員登入狀態
+  const isAdminSession = sessionStorage.getItem('webcraft_editor_authenticated') === 'true'
+
+  return inIframe || hasAdminParam || isAdminPath || isAdminSession
+}
+
+function checkIsSessionExpired(): boolean {
+  if (isAdminOrPreviewMode()) return false
+  const savedId = localStorage.getItem('webcraft-student-id')
+  const savedName = localStorage.getItem('webcraft-student-name')
+  if (!savedId || !savedName) return false
+
+  const lastActiveStr = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE)
+  if (!lastActiveStr) {
+    localStorage.setItem(STORAGE_KEY_LAST_ACTIVE, String(Date.now()))
+    return false
+  }
+  const lastActive = parseInt(lastActiveStr, 10)
+  if (isNaN(lastActive)) return false
+  return Date.now() - lastActive > IDLE_TIMEOUT_MS
+}
+
+const initialSessionExpired = checkIsSessionExpired()
+if (initialSessionExpired) {
+  localStorage.removeItem('webcraft-student-id')
+  localStorage.removeItem('webcraft-student-name')
+  localStorage.removeItem('webcraft-student-profile-completed')
+  localStorage.removeItem(STORAGE_KEY_LAST_ACTIVE)
+}
+
+const studentId = ref(initialSessionExpired ? '' : (localStorage.getItem('webcraft-student-id') || ''))
+const studentName = ref(initialSessionExpired ? '' : (localStorage.getItem('webcraft-student-name') || ''))
+const showStudentProfileModal = ref(!isAdminOrPreviewMode() && (!studentId.value.trim() || !studentName.value.trim()))
+const studentProfileError = ref(initialSessionExpired ? '因頁面閒置過久或隔較久再次開啟，已自動退出登入，請重新輸入學號與姓名。' : '')
 const isVerifyingProfile = ref(false)
+const isProfileModalShaking = ref(false)
+let shakeTimer: ReturnType<typeof setTimeout> | null = null
+
+function triggerModalShake() {
+  if (shakeTimer) clearTimeout(shakeTimer)
+  isProfileModalShaking.value = false
+  requestAnimationFrame(() => {
+    isProfileModalShaking.value = true
+    shakeTimer = setTimeout(() => {
+      isProfileModalShaking.value = false
+      shakeTimer = null
+    }, 420)
+  })
+}
 const welcomeMessage = ref('')
 let welcomeTimeout: ReturnType<typeof setTimeout> | null = null
 const practiceStudents = ref<string[]>([])
@@ -200,14 +263,29 @@ async function loadCurrentLessonSubmissions() {
       .order('created_at', { ascending: false })
 
     if (!error && data) {
-      currentLessonSubmissions.value = data.map((item: any) => {
-        let meta = null
-        try {
-          if (typeof item.code === 'string' && item.code.startsWith('{')) {
-            const parsed = JSON.parse(item.code)
-            meta = parsed.__meta
-          }
-        } catch {}
+      currentLessonSubmissions.value = data
+        .filter((item: any) => {
+          let meta = null
+          try {
+            if (typeof item.code === 'string' && item.code.startsWith('{')) {
+              const parsed = JSON.parse(item.code)
+              meta = parsed.__meta
+            }
+          } catch {}
+          const feedback = item.ai_feedback || meta?.ai_feedback || ''
+          const score = typeof item.score === 'number' ? item.score : (meta?.score || 0)
+          // 濾除無 AI 評語且為 0 分的歷史無效同步紀錄
+          if (!feedback && score === 0) return false
+          return true
+        })
+        .map((item: any) => {
+          let meta = null
+          try {
+            if (typeof item.code === 'string' && item.code.startsWith('{')) {
+              const parsed = JSON.parse(item.code)
+              meta = parsed.__meta
+            }
+          } catch {}
 
         const twTime =
           (item.created_at ? getTaiwanTimeString(new Date(item.created_at)) : '') ||
@@ -357,6 +435,7 @@ async function runAiVerification() {
         starterCode: practice.value.starterCode,
         answerCode: practice.value.answer,
         studentCode: code.value,
+        onlineDurationMinutes: Math.max(1, Math.floor(onlineDurationSeconds.value / 60)),
       },
       (queueMsg) => {
         aiQueueMessage.value = queueMsg
@@ -367,9 +446,10 @@ async function runAiVerification() {
 
     if (result.passed) {
       completedLessons.value = { ...completedLessons.value, [lesson.value.id]: true }
-      syncPractice(true)
+      localStorage.setItem('completed-levels', JSON.stringify(completedLessons.value))
       submissionMessage.value = '🎉 恭喜！實作練習已成功通過審核，已為你標記完成！'
       aiQueueMessage.value = ''
+      refreshPracticeStudents()
     }
   } catch (error: any) {
     console.error('驗證失敗：', error)
@@ -387,11 +467,147 @@ async function runAiVerification() {
   }
 }
 
+let idleCheckInterval: ReturnType<typeof setInterval> | null = null
+let lastActivityRecordedAt = 0
+
+function recordStudentActivity(force = false) {
+  if (isAdminOrPreviewMode()) return
+  if (!studentId.value.trim() || !studentName.value.trim() || showStudentProfileModal.value) return
+  const now = Date.now()
+  if (force || now - lastActivityRecordedAt > 10000) {
+    lastActivityRecordedAt = now
+    localStorage.setItem(STORAGE_KEY_LAST_ACTIVE, String(now))
+  }
+}
+
+function checkInactivity() {
+  if (isAdminOrPreviewMode()) return
+  if (!studentId.value.trim() || !studentName.value.trim() || showStudentProfileModal.value) return
+  const lastActiveStr = localStorage.getItem(STORAGE_KEY_LAST_ACTIVE)
+  if (!lastActiveStr) return
+  const lastActive = parseInt(lastActiveStr, 10)
+  if (!isNaN(lastActive) && Date.now() - lastActive >= IDLE_TIMEOUT_MS) {
+    logoutDueToInactivity()
+  }
+}
+
+function logoutDueToInactivity() {
+  studentId.value = ''
+  studentName.value = ''
+  onlineDurationSeconds.value = 0
+  currentLessonSubmissions.value = []
+  localStorage.removeItem('webcraft-student-id')
+  localStorage.removeItem('webcraft-student-name')
+  localStorage.removeItem('webcraft-student-profile-completed')
+  localStorage.removeItem(STORAGE_KEY_LAST_ACTIVE)
+  showStudentProfileModal.value = true
+  studentProfileError.value = '因頁面閒置過久，已自動退出登入，請重新輸入學號與姓名。'
+}
+
+// ==================== 上線時長（Visibility API）與心跳上報（Heartbeat） ====================
+
+function getStoredOnlineSeconds(sid: string): number {
+  if (!sid) return 0
+  const saved = localStorage.getItem(`webcraft-online-seconds-${sid.trim()}`)
+  const num = saved ? parseInt(saved, 10) : 0
+  return isNaN(num) ? 0 : num
+}
+
+const onlineDurationSeconds = ref(getStoredOnlineSeconds(studentId.value))
+let durationTickerTimer: ReturnType<typeof setInterval> | null = null
+let lastTickTime = Date.now()
+let isHeartbeatInFlight = false
+
+async function sendHeartbeat() {
+  if (isAdminOrPreviewMode()) return
+  const trimmedId = studentId.value.trim()
+  const trimmedName = studentName.value.trim()
+  if (!trimmedId || !trimmedName || showStudentProfileModal.value) return
+  if (document.visibilityState !== 'visible' || isHeartbeatInFlight) return
+
+  isHeartbeatInFlight = true
+  const minutes = Math.max(1, Math.floor(onlineDurationSeconds.value / 60))
+  try {
+    await supabase.from('practice_submissions').insert({
+      student_id: trimmedId,
+      student_name: trimmedName,
+      lesson_id: '__HEARTBEAT__',
+      code: JSON.stringify({
+        type: 'heartbeat',
+        online_seconds: onlineDurationSeconds.value,
+        timestamp: new Date().toISOString(),
+      }),
+      completed: false,
+      score: 0,
+      online_duration_minutes: minutes,
+    })
+  } catch {
+    // 靜默守護，不干擾學生學習
+  } finally {
+    isHeartbeatInFlight = false
+  }
+}
+
+function startOnlineTracking() {
+  if (isAdminOrPreviewMode()) return
+  if (durationTickerTimer) clearInterval(durationTickerTimer)
+  lastTickTime = Date.now()
+  durationTickerTimer = setInterval(() => {
+    const now = Date.now()
+    const delta = Math.floor((now - lastTickTime) / 1000)
+    lastTickTime = now
+
+    // 依據 Page Visibility API：僅在頁面可見 (visible) 且學生已登入時累計時長
+    if (
+      document.visibilityState === 'visible' &&
+      studentId.value.trim() &&
+      studentName.value.trim() &&
+      !showStudentProfileModal.value
+    ) {
+      onlineDurationSeconds.value += Math.min(Math.max(delta, 1), 5)
+
+      // 每 10 秒儲存快取至 localStorage
+      if (onlineDurationSeconds.value % 10 === 0) {
+        localStorage.setItem(
+          `webcraft-online-seconds-${studentId.value.trim()}`,
+          String(onlineDurationSeconds.value),
+        )
+      }
+
+      // 每 60 秒（1 分鐘）發送一次心跳上報
+      if (onlineDurationSeconds.value > 0 && onlineDurationSeconds.value % 60 === 0) {
+        sendHeartbeat()
+      }
+    }
+  }, 1000)
+}
+
+function handleUserInteraction() {
+  recordStudentActivity(false)
+}
+
+function handleVisibilityOrFocus() {
+  lastTickTime = Date.now()
+  if (isAdminOrPreviewMode()) return
+  if (document.visibilityState === 'visible') {
+    checkInactivity()
+  } else {
+    // 當頁面隱藏 (hidden) 時，立即快取最新秒數
+    if (studentId.value.trim()) {
+      localStorage.setItem(
+        `webcraft-online-seconds-${studentId.value.trim()}`,
+        String(onlineDurationSeconds.value),
+      )
+    }
+  }
+}
+
 async function confirmStudentProfile() {
   const trimmedStudentId = studentId.value.trim()
   const trimmedStudentName = studentName.value.trim()
   if (!trimmedStudentId || !trimmedStudentName) {
     studentProfileError.value = '請輸入學號與姓名後再開始練習。'
+    triggerModalShake()
     return
   }
 
@@ -402,6 +618,7 @@ async function confirmStudentProfile() {
     const res = await verifyCourseMember(trimmedStudentId, trimmedStudentName)
     if (!res.valid) {
       studentProfileError.value = res.error || '錯誤！你目前沒有在課程中，請檢查你的學號/姓名是否正確！'
+      triggerModalShake()
       return
     }
 
@@ -410,6 +627,12 @@ async function confirmStudentProfile() {
     localStorage.setItem('webcraft-student-id', studentId.value)
     localStorage.setItem('webcraft-student-name', studentName.value)
     localStorage.setItem('webcraft-student-profile-completed', 'true')
+    recordStudentActivity(true)
+    if (!isAdminOrPreviewMode()) {
+      onlineDurationSeconds.value = getStoredOnlineSeconds(studentId.value)
+      startOnlineTracking()
+      sendHeartbeat()
+    }
     studentProfileError.value = ''
     showStudentProfileModal.value = false
 
@@ -423,43 +646,15 @@ async function confirmStudentProfile() {
   } catch (error) {
     console.error('驗證身分出錯：', error)
     studentProfileError.value = '身分驗證發生異常，請稍後再試！'
+    triggerModalShake()
   } finally {
     isVerifyingProfile.value = false
   }
 }
 
-function closeStudentProfileModal() {
-  if (studentId.value.trim() && studentName.value.trim()) {
-    showStudentProfileModal.value = false
-  }
-}
-
-async function syncPractice(completed = false) {
-  if (!studentId.value.trim() || !studentName.value.trim() || !lesson.value) return
-  localStorage.setItem('webcraft-student-name', studentName.value.trim())
-  localStorage.setItem('webcraft-student-id', studentId.value.trim())
-  try {
-    const { error } = await supabase.from('practice_submissions').insert({
-      student_id: studentId.value.trim(),
-      student_name: studentName.value.trim(),
-      lesson_id: lesson.value.id,
-      code: JSON.stringify(code.value),
-      completed,
-    })
-    if (error) {
-      // 備援：若資料庫尚未新增 completed 欄位，存入 code.__meta
-      await supabase.from('practice_submissions').insert({
-        student_id: studentId.value.trim(),
-        student_name: studentName.value.trim(),
-        lesson_id: lesson.value.id,
-        code: JSON.stringify({ ...code.value, __meta: { completed } }),
-      })
-    }
-    practiceSyncError.value = false
-    await refreshPracticeStudents()
-  } catch {
-    practiceSyncError.value = false // 不對學生顯示錯誤
-  }
+async function closeStudentProfileModal() {
+  if (isVerifyingProfile.value) return
+  await confirmStudentProfile()
 }
 
 async function refreshPracticeStudents() {
@@ -490,8 +685,8 @@ function handleWindowMessage(event: MessageEvent) {
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (showHistoryModal.value) showHistoryModal.value = false
-    if (showStudentProfileModal.value && studentId.value.trim() && studentName.value.trim()) {
-      showStudentProfileModal.value = false
+    if (showStudentProfileModal.value) {
+      closeStudentProfileModal()
     }
   }
 }
@@ -505,6 +700,30 @@ onMounted(() => {
   window.addEventListener('message', handleWindowMessage)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', updateHistoryModalScroll, { passive: true })
+
+  // 記錄初次掛載活躍時間與啟動 Visibility API 在線時長心跳追蹤（管理員或預覽模式下不記錄）
+  if (!isAdminOrPreviewMode()) {
+    if (studentId.value.trim() && studentName.value.trim()) {
+      recordStudentActivity(true)
+      sendHeartbeat()
+    }
+    startOnlineTracking()
+
+    // 監聽使用者互動事件以刷新閒置時間
+    window.addEventListener('mousemove', handleUserInteraction, { passive: true })
+    window.addEventListener('keydown', handleUserInteraction, { passive: true })
+    window.addEventListener('click', handleUserInteraction, { passive: true })
+    window.addEventListener('scroll', handleUserInteraction, { passive: true })
+    window.addEventListener('touchstart', handleUserInteraction, { passive: true })
+
+    // 監聽頁面切回可見與獲取焦點（切回分頁時立即檢查逾時）
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+    window.addEventListener('focus', handleVisibilityOrFocus)
+
+    // 定期檢查閒置逾時（每 15 秒檢查一次）
+    idleCheckInterval = setInterval(checkInactivity, 15000)
+  }
+
   refreshPracticeStudents()
   loadCurrentLessonSubmissions()
 })
@@ -513,6 +732,16 @@ onUnmounted(() => {
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', updateHistoryModalScroll)
+  window.removeEventListener('mousemove', handleUserInteraction)
+  window.removeEventListener('keydown', handleUserInteraction)
+  window.removeEventListener('click', handleUserInteraction)
+  window.removeEventListener('scroll', handleUserInteraction)
+  window.removeEventListener('touchstart', handleUserInteraction)
+  document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+  window.removeEventListener('focus', handleVisibilityOrFocus)
+  if (idleCheckInterval) clearInterval(idleCheckInterval)
+  if (durationTickerTimer) clearInterval(durationTickerTimer)
+  if (shakeTimer) clearTimeout(shakeTimer)
   historyResizeObserver?.disconnect()
   historyResizeObserver = null
   if (serverBusyTimer) clearTimeout(serverBusyTimer)
@@ -555,24 +784,16 @@ const previewDocument = computed(() => `<!doctype html>
         class="modal-overlay student-profile-overlay"
         @click.self="closeStudentProfileModal"
       >
-        <form class="modal-box student-profile-modal" @submit.prevent="confirmStudentProfile">
+        <form
+          class="modal-box student-profile-modal"
+          :class="{ 'is-shaking': isProfileModalShaking }"
+          @submit.prevent="confirmStudentProfile"
+        >
           <div class="modal-header">
             <div>
               <span class="section-kicker">身分驗證</span>
               <h3>請先驗證你的課程身分</h3>
             </div>
-            <button
-              v-if="studentId.trim() && studentName.trim()"
-              type="button"
-              class="history-close-icon-btn"
-              @click="showStudentProfileModal = false"
-              aria-label="關閉身分驗證視窗"
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
           </div>
           <div class="modal-body student-profile-body">
             <p>請輸入你的學號與姓名以開始練習</p>
