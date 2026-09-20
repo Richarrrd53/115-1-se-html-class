@@ -2697,12 +2697,12 @@ iframe {
    ════════════════════════════════════════════════════════════ */
 
 /* 側邊欄平滑向左移出 */
-.sidebar.shifted-left {
+/* .sidebar.shifted-left {
   margin-left: -285px !important;
   opacity: 0 !important;
   pointer-events: none !important;
   transform: translateX(-100%);
-}
+} */
 
 /* ── 15.1 StoryboardAI2 風格 Quick Creation Layer (全域背景模糊與上方懸浮卡片) ── */
 .ai-creation-layer {
@@ -5113,6 +5113,7 @@ iframe {
 }
 
 .empty-sparkle {
+  display: none;
   font-size: 28px;
   color: #3b82f6;
   margin-bottom: 8px;
