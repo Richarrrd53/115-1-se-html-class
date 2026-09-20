@@ -24,8 +24,11 @@ import { isEditorAuthenticated, verifyEditorPassword, setEditorAuthenticated } f
 import { COURSE_MEMBERS } from './courseMembers'
 import { supabase } from './supabase'
 import MathCurveLoader from './components/MathCurveLoader.vue'
+import TaChatDrawer from './components/TaChatDrawer.vue'
 
 const baseUrl = import.meta.env.BASE_URL
+const isTaChatOpen = ref(false)
+const taUnreadCount = ref(0)
 
 // 權限驗證狀態
 const isAuthenticated = ref(isEditorAuthenticated())
@@ -970,6 +973,15 @@ function handleResetDefault() {
 
         <div class="divider"></div>
 
+        <button class="btn btn-outline btn-ta-chat" title="學生諮詢與提問對話" @click="isTaChatOpen = true">
+          <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          </svg>
+          <span class="btn-text-full">學生對話</span>
+          <span class="btn-text-short">對話</span>
+          <span v-if="taUnreadCount > 0" class="ta-unread-badge">{{ taUnreadCount }}</span>
+        </button>
+
         <button class="btn btn-outline btn-lock" title="鎖定編輯器" @click="handleLock">
           <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -1720,5 +1732,12 @@ function handleResetDefault() {
       </div>
     </div>
     </transition>
+
+    <!-- 助教端訊息管理抽屜面板 -->
+    <TaChatDrawer
+      :is-open="isTaChatOpen"
+      @close="isTaChatOpen = false"
+      @unread-update="taUnreadCount = $event"
+    />
   </div>
 </template>

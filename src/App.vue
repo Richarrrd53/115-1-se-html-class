@@ -7,12 +7,15 @@ import { verifyCourseMember } from './memberService'
 import { verifyPracticeWithAI, type AiVerificationResult, getTaiwanTimeString } from './aiService'
 import MathCurveLoader from './components/MathCurveLoader.vue'
 import VsCodeEditor from './components/VsCodeEditor.vue'
+import ContactChat from './components/ContactChat.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const contentRef = ref<HTMLElement | null>(null)
+const isChatDrawerActive = ref(false)
 
 function scrollContentToTop() {
   if (contentRef.value) {
+    contentRef.value.style.scrollBehavior = "smooth"
     contentRef.value.scrollTo(0, 0)
     contentRef.value.scrollTop = 0
     contentRef.value.scrollLeft = 0
@@ -1116,7 +1119,7 @@ ${raw}
     </header>
 
     <div class="workspace">
-      <aside class="sidebar" id="dash-sidebar">
+      <aside class="sidebar" id="dash-sidebar" :class="{ 'shifted-left': isChatDrawerActive }">
         <div class="side-header">
           <div class="side-logo brand-logo">
             <div class="side-logo-badge">&lt;/&gt;</div>
@@ -1547,5 +1550,13 @@ ${raw}
         </div>
       </div>
     </transition>
+
+    <!-- 聯絡我們與對話系統浮動組件 -->
+    <ContactChat
+      :student-id="studentId"
+      :student-name="studentName"
+      @require-login="showStudentProfileModal = true"
+      @drawer-state-change="isChatDrawerActive = $event"
+    />
   </div>
 </template>

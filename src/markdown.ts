@@ -25,6 +25,11 @@ marked.use({
       const content = typeof text === 'string' ? text : ''
       return `<code>${escapeHtml(content)}</code>`
     },
+    link({ href, title, text }: Tokens.Link): string {
+      const cleanHref = escapeHtml(href || '')
+      const cleanTitle = title ? ` title="${escapeHtml(title)}"` : ''
+      return `<a href="${cleanHref}"${cleanTitle} target="_blank" rel="noopener noreferrer">${text}</a>`
+    },
   },
 })
 
