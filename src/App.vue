@@ -8,6 +8,7 @@ import { verifyPracticeWithAI, type AiVerificationResult, getTaiwanTimeString } 
 import MathCurveLoader from './components/MathCurveLoader.vue'
 import VsCodeEditor from './components/VsCodeEditor.vue'
 import ContactChat from './components/ContactChat.vue'
+import AnnouncementMorphModal from './components/AnnouncementMorphModal.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const contentRef = ref<HTMLElement | null>(null)
@@ -1102,6 +1103,7 @@ ${raw}
         <div class="progress-track"><i :style="{ width: `${progress}%` }"></i></div>
         <b>{{ progress }}%</b>
       </div>
+      <AnnouncementMorphModal :student-id="studentId" />
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">
         <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>

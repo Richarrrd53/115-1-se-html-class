@@ -25,6 +25,7 @@ import { COURSE_MEMBERS } from './courseMembers'
 import { supabase } from './supabase'
 import MathCurveLoader from './components/MathCurveLoader.vue'
 import TaChatDrawer from './components/TaChatDrawer.vue'
+import AdminAnnouncementManager from './components/AdminAnnouncementManager.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const isTaChatOpen = ref(false)
@@ -142,7 +143,7 @@ export interface StudentAdminRecord {
   isDirty?: boolean
 }
 
-const currentViewMode = ref<'lessons' | 'grades'>('lessons')
+const currentViewMode = ref<'lessons' | 'grades' | 'announcements'>('lessons')
 const studentsList = ref<StudentAdminRecord[]>([])
 const isLoadingStudents = ref(false)
 const studentSearchKeyword = ref('')
@@ -1066,6 +1067,19 @@ function handleResetDefault() {
           <span class="tab-label-full">學生練習成績與上線管理</span>
           <span class="tab-label-short">成績管理</span>
         </button>
+        <button
+          type="button"
+          class="mode-tab-btn"
+          :class="{ active: currentViewMode === 'announcements' }"
+          @click="currentViewMode = 'announcements'; closeMoreMenu()"
+        >
+          <svg class="btn-svg" viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+          </svg>
+          <span class="tab-label-full">更新公告管理</span>
+          <span class="tab-label-short">公告管理</span>
+        </button>
       </div>
 
       <div class="editor-header-actions">
@@ -1952,6 +1966,9 @@ function handleResetDefault() {
         </table>
       </div>
     </div>
+
+    <!-- 主工作區：公告管理視圖 -->
+    <AdminAnnouncementManager v-else-if="currentViewMode === 'announcements'" />
 
     <!-- 學生詳細單元評分與作答抽屜/彈窗 -->
     <transition name="sys-modal" :duration="450">
