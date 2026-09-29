@@ -49,6 +49,48 @@ const cursorCol = ref(1)
 const selectedCharCount = ref(0)
 const isWordWrap = ref(false)
 const copySuccessToast = ref(false)
+const selectedSuggestionIndex = ref(0)
+const suggestionQuery = ref('')
+
+interface CompletionItem {
+  label: string
+  detail: string
+  insertText: string
+}
+
+const completionItems: Record<'html' | 'css' | 'js', CompletionItem[]> = {
+  html: [
+    { label: '<div>', detail: '區塊元素', insertText: '<div></div>' },
+    { label: '<section>', detail: '內容區段', insertText: '<section></section>' },
+    { label: '<button>', detail: '按鈕元素', insertText: '<button></button>' },
+    { label: '<h1>', detail: '標題元素', insertText: '<h1></h1>' },
+    { label: '<p>', detail: '段落元素', insertText: '<p></p>' },
+    { label: 'class=""', detail: 'HTML 屬性', insertText: 'class=""' },
+    { label: 'id=""', detail: 'HTML 屬性', insertText: 'id=""' },
+    { label: 'aria-label=""', detail: '無障礙屬性', insertText: 'aria-label=""' },
+  ],
+  css: [
+    { label: 'color', detail: '文字顏色', insertText: 'color: ' },
+    { label: 'background-color', detail: '背景顏色', insertText: 'background-color: ' },
+    { label: 'display', detail: '排列方式', insertText: 'display: ' },
+    { label: 'flex-direction', detail: 'Flex 方向', insertText: 'flex-direction: ' },
+    { label: 'justify-content', detail: '主軸對齊', insertText: 'justify-content: ' },
+    { label: 'align-items', detail: '交叉軸對齊', insertText: 'align-items: ' },
+    { label: 'margin', detail: '外距', insertText: 'margin: ' },
+    { label: 'padding', detail: '內距', insertText: 'padding: ' },
+    { label: 'border-radius', detail: '圓角', insertText: 'border-radius: ' },
+  ],
+  js: [
+    { label: 'const', detail: '宣告常數', insertText: 'const ' },
+    { label: 'let', detail: '宣告變數', insertText: 'let ' },
+    { label: 'document.querySelector', detail: '選取元素', insertText: 'document.querySelector()' },
+    { label: 'addEventListener', detail: '監聽事件', insertText: 'addEventListener()' },
+    { label: 'textContent', detail: '設定文字內容', insertText: 'textContent' },
+    { label: 'classList', detail: '操作 class', insertText: 'classList' },
+    { label: 'function', detail: '建立函式', insertText: 'function ' },
+    { label: 'if', detail: '條件判斷', insertText: 'if ()' },
+  ],
+}
 
 // 目前選取要更換顏色的目標
 const activeColorTarget = ref<{
@@ -278,6 +320,66 @@ function updateCursorInfo() {
   const splitted = textBefore.split('\n')
   cursorLine.value = splitted.length
   cursorCol.value = splitted[splitted.length - 1].length + 1
+  updateSuggestions()
+}
+
+function getCompletionContext() {
+  const textarea = textareaRef.value
+  if (!textarea) return null
+
+  const start = textarea.selectionStart
+  const beforeCursor = textarea.value.substring(0, start)
+  const match = beforeCursor.match(/(?:<[\w-]*|[.#]?[\w-]+)$/)
+  if (!match || match[0].length < 2) return null
+
+  const query = match[0]
+  const options = completionItems[props.activePanel].filter((item) =>
+    item.label.toLowerCase().startsWith(query.toLowerCase()),
+  )
+  if (!options.length) return null
+
+  return { query, start: start - query.length, options }
+}
+
+function updateSuggestions() {
+  const context = getCompletionContext()
+  suggestionQuery.value = context?.query || ''
+  if (!context) {
+    selectedSuggestionIndex.value = 0
+    return
+  }
+  selectedSuggestionIndex.value = Math.min(selectedSuggestionIndex.value, context.options.length - 1)
+}
+
+function closeSuggestions() {
+  suggestionQuery.value = ''
+  selectedSuggestionIndex.value = 0
+}
+
+function applySuggestion(item?: CompletionItem) {
+  const textarea = textareaRef.value
+  const context = getCompletionContext()
+  if (!textarea || !context) return false
+
+  const suggestion = item || context.options[selectedSuggestionIndex.value]
+  if (!suggestion) return false
+  const cursor = textarea.selectionStart
+  currentCode.value =
+    textarea.value.substring(0, context.start) +
+    suggestion.insertText +
+    textarea.value.substring(cursor)
+  closeSuggestions()
+  nextTick(() => {
+    const nextCursor = context.start + suggestion.insertText.length
+    textarea.setSelectionRange(nextCursor, nextCursor)
+    updateCursorInfo()
+  })
+  return true
+}
+
+function handleSuggestionMouseDown(item: CompletionItem, e: MouseEvent) {
+  e.preventDefault()
+  applySuggestion(item)
 }
 
 // 點擊顏色圖標開啟原生調色盤
@@ -323,6 +425,26 @@ function handleKeydown(e: KeyboardEvent) {
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
   const value = textarea.value
+
+  if (e.key === 'Escape') {
+    closeSuggestions()
+    return
+  }
+
+  const completionContext = getCompletionContext()
+  if (completionContext && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault()
+    const direction = e.key === 'ArrowDown' ? 1 : -1
+    selectedSuggestionIndex.value =
+      (selectedSuggestionIndex.value + direction + completionContext.options.length) % completionContext.options.length
+    return
+  }
+
+  if (completionContext && (e.key === 'Tab' || e.key === 'Enter')) {
+    e.preventDefault()
+    applySuggestion()
+    return
+  }
 
   // 1. Tab & Shift+Tab
   if (e.key === 'Tab') {
@@ -758,6 +880,23 @@ onMounted(() => {
           </div>
         </div>
 
+        <div v-if="suggestionQuery" class="vsc-completion-menu" role="listbox">
+          <button
+            v-for="(item, index) in getCompletionContext()?.options || []"
+            :key="item.label"
+            type="button"
+            class="vsc-completion-item"
+            :class="{ selected: index === selectedSuggestionIndex }"
+            role="option"
+            :aria-selected="index === selectedSuggestionIndex"
+            @mousedown="handleSuggestionMouseDown(item, $event)"
+          >
+            <span class="completion-label">{{ item.label }}</span>
+            <span class="completion-detail">{{ item.detail }}</span>
+          </button>
+          <div class="vsc-completion-hint">Tab 套用 · ↑↓ 選擇 · Esc 關閉</div>
+        </div>
+
         <!-- 核心編輯 textarea (支援 Tab 縮排、反縮排、快捷鍵) -->
         <textarea
           ref="textareaRef"
@@ -1182,6 +1321,69 @@ onMounted(() => {
   transform: scale(1.3);
   border-color: #ffffff;
   box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+}
+
+.vsc-completion-menu {
+  position: absolute;
+  top: 42px;
+  left: 14px;
+  z-index: 6;
+  width: min(330px, calc(100% - 28px));
+  max-height: 238px;
+  overflow-y: auto;
+  padding: 4px;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.vsc-completion-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: #d4d4d4;
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vsc-completion-item.selected,
+.vsc-completion-item:hover {
+  background: #094771;
+  color: #ffffff;
+}
+
+.completion-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion-detail {
+  flex-shrink: 0;
+  color: #858585;
+  font-size: 0.68rem;
+}
+
+.vsc-completion-item.selected .completion-detail,
+.vsc-completion-item:hover .completion-detail {
+  color: #b8d7ed;
+}
+
+.vsc-completion-hint {
+  padding: 5px 8px 3px;
+  border-top: 1px solid #3c3c3c;
+  color: #858585;
+  font-size: 0.66rem;
 }
 
 /* 核心代碼 Textarea */
