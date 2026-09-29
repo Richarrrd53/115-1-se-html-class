@@ -1,11 +1,29 @@
 export type Code = { html: string; css: string; js: string }
 export type Concept = { name: string; description: string }
 export type Stage = { id: number; title: string }
+export interface CustomCompletionItem {
+  label: string
+  detail?: string
+  insertText?: string
+}
+
+export interface LessonCustomCompletions {
+  html?: CustomCompletionItem[]
+  css?: CustomCompletionItem[]
+  js?: CustomCompletionItem[]
+}
+
 export type Lesson = {
   id: string; number: number; stage: number; type: string; title: string; objective: string
   introduction: string; concepts: Concept[]
   example: { title: string; description: string; code: string; preview: string }
-  practice: { instructions: string; starterCode: Code; checklist: string[]; answer: Code }
+  practice: {
+    instructions: string
+    starterCode: Code
+    checklist: string[]
+    answer: Code
+    customCompletions?: LessonCustomCompletions
+  }
 }
 
 export const stages: Stage[] = [
@@ -133,6 +151,171 @@ const challengeAnswers: Record<number, Code> = {
   17: code('<input id="todo" placeholder="新增待辦"><button id="add">新增</button><button id="theme">深色模式</button><ul id="list"><li>完成 HTML 練習 <button class="remove">刪除</button></li></ul>', 'body { transition: .3s; }\n.dark { background: #172033; color: white; }', "const list = document.querySelector('#list')\nconst add = document.querySelector('#add')\nconst input = document.querySelector('#todo')\nadd.addEventListener('click', () => {\n  if (!input.value) return\n  const li = document.createElement('li')\n  li.append(document.createTextNode(input.value + ' '))\n  const remove = document.createElement('button')\n  remove.className = 'remove'\n  remove.textContent = '刪除'\n  remove.addEventListener('click', () => li.remove())\n  li.appendChild(remove)\n  list.appendChild(li)\n  input.value = ''\n})\ndocument.querySelector('#theme').addEventListener('click', () => document.body.classList.toggle('dark'))"),
 }
 
+export const challengeCompletions: Record<number, LessonCustomCompletions> = {
+  1: {
+    html: [
+      { label: '<header>', detail: '頁首區塊', insertText: '<header></header>' },
+      { label: '<nav>', detail: '導覽列區塊', insertText: '<nav></nav>' },
+      { label: '<main>', detail: '主要內容區', insertText: '<main></main>' },
+      { label: '<section>', detail: '章節段落區塊', insertText: '<section></section>' },
+      { label: '<article>', detail: '獨立文章區塊', insertText: '<article></article>' },
+      { label: '<footer>', detail: '頁尾區塊', insertText: '<footer></footer>' },
+      { label: '<h1>', detail: '主標題', insertText: '<h1></h1>' },
+      { label: '<h2>', detail: '次標題', insertText: '<h2></h2>' },
+      { label: '<p>', detail: '段落文字', insertText: '<p></p>' },
+    ],
+  },
+  2: {
+    html: [
+      { label: '<table>', detail: '表格容器', insertText: '<table>\n  \n</table>' },
+      { label: '<caption>', detail: '表格標題', insertText: '<caption></caption>' },
+      { label: '<tr>', detail: '表格橫列', insertText: '<tr></tr>' },
+      { label: '<th>', detail: '標題儲存格', insertText: '<th></th>' },
+      { label: '<td>', detail: '資料儲存格', insertText: '<td></td>' },
+      { label: '<ul>', detail: '無序清單', insertText: '<ul>\n  <li></li>\n</ul>' },
+      { label: '<ol>', detail: '有序清單', insertText: '<ol>\n  <li></li>\n</ol>' },
+      { label: '<li>', detail: '清單項目', insertText: '<li></li>' },
+    ],
+  },
+  3: {
+    html: [
+      { label: '<form>', detail: '表單容器', insertText: '<form>\n  \n</form>' },
+      { label: '<label>', detail: '欄位標籤', insertText: '<label for=""></label>' },
+      { label: '<input>', detail: '輸入欄位', insertText: '<input id="">' },
+      { label: 'type="password"', detail: '密碼輸入類型', insertText: 'type="password"' },
+      { label: 'type="email"', detail: '信箱輸入類型', insertText: 'type="email"' },
+      { label: '<textarea>', detail: '多行輸入框', insertText: '<textarea id=""></textarea>' },
+      { label: '<button>', detail: '按鈕元素', insertText: '<button>送出</button>' },
+      { label: 'required', detail: '必填驗證屬性', insertText: 'required' },
+    ],
+  },
+  4: {
+    css: [
+      { label: '.panel button', detail: '後代選擇器', insertText: '.panel button {\n  \n}' },
+      { label: '.panel .primary', detail: '組合 class 選擇器', insertText: '.panel .primary {\n  \n}' },
+      { label: '#save', detail: 'ID 選擇器', insertText: '#save {\n  \n}' },
+      { label: 'background', detail: '背景顏色', insertText: 'background: ' },
+      { label: 'color: white', detail: '文字顏色', insertText: 'color: white;' },
+      { label: 'padding', detail: '內距', insertText: 'padding: ' },
+    ],
+  },
+  5: {
+    css: [
+      { label: 'tr:nth-child(even)', detail: '偶數行隔行變色', insertText: 'tr:nth-child(even) {\n  \n}' },
+      { label: 'tr:nth-child(odd)', detail: '奇數行選擇器', insertText: 'tr:nth-child(odd) {\n  \n}' },
+      { label: '.required::after', detail: '必填紅色星號偽元素', insertText: '.required::after {\n  content: " *";\n  color: #e76f8f;\n}' },
+      { label: 'content', detail: '偽元素內容屬性', insertText: 'content: " *";' },
+      { label: 'color', detail: '文字顏色', insertText: 'color: ' },
+      { label: 'background', detail: '背景顏色', insertText: 'background: ' },
+    ],
+  },
+  6: {
+    css: [
+      { label: 'box-sizing: border-box', detail: '邊框盒模型（推薦）', insertText: 'box-sizing: border-box;' },
+      { label: 'box-sizing: content-box', detail: '內容盒模型', insertText: 'box-sizing: content-box;' },
+      { label: 'width: 280px', detail: '指定卡片寬度', insertText: 'width: 280px;' },
+      { label: 'padding: 24px', detail: '內距空間', insertText: 'padding: 24px;' },
+      { label: 'border: 8px solid #5268e6', detail: '邊框樣式', insertText: 'border: 8px solid #5268e6;' },
+    ],
+  },
+  7: {
+    css: [
+      { label: 'font-size', detail: '字體大小', insertText: 'font-size: 16px;' },
+      { label: 'line-height', detail: '舒適行高', insertText: 'line-height: 1.9;' },
+      { label: 'letter-spacing', detail: '字元間距', insertText: 'letter-spacing: .5px;' },
+      { label: 'font-weight', detail: '文字粗細', insertText: 'font-weight: 700;' },
+      { label: 'max-width', detail: '文章最大寬度', insertText: 'max-width: 420px;' },
+    ],
+  },
+  8: {
+    css: [
+      { label: 'linear-gradient', detail: '線性漸層背景', insertText: 'linear-gradient(135deg, #5b8def, #f19b9b)' },
+      { label: 'background', detail: '背景屬性', insertText: 'background: ' },
+      { label: 'color: white', detail: '白色文字', insertText: 'color: white;' },
+      { label: 'height', detail: '高度設定', insertText: 'height: 180px;' },
+      { label: 'padding', detail: '內距設定', insertText: 'padding: 24px;' },
+    ],
+  },
+  9: {
+    css: [
+      { label: 'border-radius: 50%', detail: '正圓形造型', insertText: 'border-radius: 50% !important;' },
+      { label: 'border-radius: 999px', detail: '膠囊圓角按鈕', insertText: 'border-radius: 999px;' },
+      { label: 'border-radius', detail: '圓角柔化', insertText: 'border-radius: 14px;' },
+      { label: 'display: flex', detail: 'Flex 排版', insertText: 'display: flex;' },
+      { label: 'gap', detail: '項目間距', insertText: 'gap: 10px;' },
+      { label: 'align-items: center', detail: '垂直置中', insertText: 'align-items: center;' },
+    ],
+  },
+  10: {
+    css: [
+      { label: 'box-shadow: 0 5px 0', detail: '按鈕立體陰影', insertText: 'box-shadow: 0 5px 0 #394aa3;' },
+      { label: 'box-shadow: multi', detail: '多層浮雕陰影', insertText: 'box-shadow: 0 8px 0 #c5ccef, 0 15px 25px #23345c33;' },
+      { label: '.press:active', detail: '點擊按壓狀態', insertText: '.press:active {\n  transform: translateY(4px);\n  box-shadow: 0 1px 0 #394aa3;\n}' },
+      { label: 'transform: translateY', detail: '按下位移動態', insertText: 'transform: translateY(4px);' },
+    ],
+  },
+  11: {
+    css: [
+      { label: 'backdrop-filter: blur(10px)', detail: '背景模糊毛玻璃', insertText: 'backdrop-filter: blur(10px);' },
+      { label: 'background: #ffffff33', detail: '半透明白色背景', insertText: 'background: #ffffff33;' },
+      { label: 'border: 1px solid #ffffff66', detail: '微光半透明邊框', insertText: 'border: 1px solid #ffffff66;' },
+      { label: 'border-radius: 12px', detail: '卡片圓角', insertText: 'border-radius: 12px;' },
+    ],
+  },
+  12: {
+    css: [
+      { label: 'transform: rotateY(180deg)', detail: 'Y軸翻轉背面', insertText: 'transform: rotateY(180deg);' },
+      { label: 'perspective: 600px', detail: '3D 透視深度', insertText: 'perspective: 600px;' },
+      { label: 'backface-visibility: hidden', detail: '隱藏背面', insertText: 'backface-visibility: hidden;' },
+      { label: 'transition: transform .5s', detail: '翻牌過渡動畫', insertText: 'transition: transform .5s;' },
+      { label: '.scene:hover .photo', detail: '懸停觸發翻轉', insertText: '.scene:hover .photo {\n  transform: rotateY(180deg);\n}' },
+    ],
+  },
+  13: {
+    css: [
+      { label: 'display: flex', detail: '啟動 Flex 容器', insertText: 'display: flex;' },
+      { label: 'justify-content: space-between', detail: '兩側對齊', insertText: 'justify-content: space-between;' },
+      { label: 'align-items: center', detail: '垂直對齊置中', insertText: 'align-items: center;' },
+      { label: 'flex-wrap: wrap', detail: '空間不足自動折行', insertText: 'flex-wrap: wrap;' },
+      { label: 'flex: 1', detail: '彈性均分欄位寬度', insertText: 'flex: 1;' },
+      { label: 'gap: 16px', detail: '元素間隔', insertText: 'gap: 16px;' },
+    ],
+  },
+  14: {
+    css: [
+      { label: 'transition: max-height .3s', detail: '展開平滑動畫', insertText: 'transition: max-height .3s, padding .3s;' },
+      { label: 'max-height: 0', detail: '收合高度', insertText: 'max-height: 0;' },
+      { label: 'overflow: hidden', detail: '超出範圍隱藏', insertText: 'overflow: hidden;' },
+      { label: '.faq button:hover + p', detail: '相鄰兄弟展開選取器', insertText: '.faq button:hover + p {\n  max-height: 50px;\n  padding: 10px;\n}' },
+    ],
+  },
+  15: {
+    js: [
+      { label: 'document.querySelector', detail: '選取 DOM 元素', insertText: "document.querySelector('#comment')" },
+      { label: 'textContent', detail: '設定文字內容', insertText: 'textContent' },
+      { label: "addEventListener('input')", detail: '監聽即時輸入事件', insertText: "input.addEventListener('input', () => {\n  count.textContent = input.value.length\n})" },
+      { label: 'input.value.length', detail: '取得輸入字串長度', insertText: 'input.value.length' },
+    ],
+  },
+  16: {
+    js: [
+      { label: "addEventListener('click')", detail: '監聽按鈕點擊', insertText: "addEventListener('click', () => {\n  \n})" },
+      { label: "classList.toggle('on')", detail: '切換開關樣式', insertText: "classList.toggle('on')" },
+      { label: 'document.querySelector', detail: '選取目標元素', insertText: "document.querySelector('#room')" },
+    ],
+  },
+  17: {
+    js: [
+      { label: 'document.createElement', detail: '動態建立 HTML 標籤', insertText: "document.createElement('li')" },
+      { label: 'appendChild', detail: '加入子元素至節點尾端', insertText: 'appendChild()' },
+      { label: 'append', detail: '加入多個節點或文字', insertText: 'append()' },
+      { label: 'li.remove()', detail: '從畫面中刪除該項目', insertText: 'li.remove()' },
+      { label: "classList.toggle('dark')", detail: '切換深色模式', insertText: "document.body.classList.toggle('dark')" },
+      { label: 'className', detail: '設定 CSS class 名稱', insertText: "className = 'remove'" },
+    ],
+  },
+}
+
 const topics: [number, number, string, string, string, Code, string, string[], string][] = [
   [1, 1, '語意化標籤與文件結構', '用正確的 HTML 標籤搭出清楚的頁面骨架。', 'HTML 骨架範例', code('<header><h1>我的學習筆記</h1></header>\\n<nav>首頁　課程　關於我</nav>\\n<main><article><h2>今天學了語意化標籤</h2><p>讓內容更容易理解。</p></article></main>\\n<footer>© 2026 WebCraft</footer>', 'body{font-family:Arial;padding:20px} header{color:#3149d8} article{padding:16px;background:#eef0ff;border-radius:12px}'), '把 div 改成語意化標籤。', ['我使用了 header、nav、main、article、footer', '內容層級使用正確的標題'], '<header><h1>我的學習筆記</h1></header>\\n<nav>首頁　課程　關於我</nav>\\n<main><article><h2>文章標題</h2><p>文章內容</p></article></main>\\n<footer>© 2026</footer>'],
   [1, 2, '清單與表格', '理解清單與表格的資料結構及適用時機。', '課表與待辦清單', code('<h2>本週課表</h2><table><tr><th>星期</th><th>課程</th></tr><tr><td>一</td><td>軟體工程</td></tr></table>\\n<h2>待辦事項</h2><ol><li>預習 HTML</li><li>完成練習</li></ol>', 'table{border-collapse:collapse}th,td{border:1px solid #ccd;padding:8px}'), '將課程資料整理成表格，並補上待辦清單。', ['表格有使用 th 表示標題', '清單項目都放在 li 裡'], '<table><tr><th>星期</th><th>課程</th></tr><tr><td>一</td><td>軟體工程</td></tr></table>\\n<ol><li>預習 HTML</li><li>完成練習</li></ol>'],
@@ -180,6 +363,7 @@ export const lessons: Lesson[] = topics.map((topic) => {
       starterCode: formatCodeSet(challengeStarters[number]),
       checklist,
       answer: formatCodeSet(challengeAnswers[number]),
+      customCompletions: challengeCompletions[number] || { html: [], css: [], js: [] },
     },
   }
 })

@@ -511,9 +511,12 @@ const currentLesson = computed(() => {
   return lessons.value.find((l) => l.id === selectedLessonId.value) || lessons.value[0]
 })
 
-// Tab 切換 (練習碼與參考答案)
+// Tab 切換 (練習碼、參考答案、代碼補全詞語)
 const starterTab = ref<'html' | 'css' | 'js'>('html')
 const answerTab = ref<'html' | 'css' | 'js'>('html')
+const completionTab = ref<'html' | 'css' | 'js'>('html')
+const showBatchInput = ref<'html' | 'css' | 'js' | null>(null)
+const batchInputText = ref('')
 
 // 彈窗狀態
 const showStageModal = ref(false)
@@ -666,6 +669,238 @@ function addChecklistItem() {
 function removeChecklistItem(index: number) {
   if (!currentLesson.value) return
   currentLesson.value.practice.checklist.splice(index, 1)
+}
+
+// ================== 題目代碼補全詞語管理 ==================
+function ensureCustomCompletions() {
+  if (!currentLesson.value) return
+  if (!currentLesson.value.practice) {
+    currentLesson.value.practice = {
+      instructions: '',
+      starterCode: { html: '', css: '', js: '' },
+      checklist: [],
+      answer: { html: '', css: '', js: '' },
+    }
+  }
+  if (!currentLesson.value.practice.customCompletions) {
+    currentLesson.value.practice.customCompletions = { html: [], css: [], js: [] }
+  }
+  if (!currentLesson.value.practice.customCompletions.html) currentLesson.value.practice.customCompletions.html = []
+  if (!currentLesson.value.practice.customCompletions.css) currentLesson.value.practice.customCompletions.css = []
+  if (!currentLesson.value.practice.customCompletions.js) currentLesson.value.practice.customCompletions.js = []
+}
+
+watch(
+  () => currentLesson.value?.id,
+  () => {
+    ensureCustomCompletions()
+  },
+  { immediate: true },
+)
+
+function addCompletionItem(panel: 'html' | 'css' | 'js') {
+  ensureCustomCompletions()
+  if (!currentLesson.value?.practice?.customCompletions) return
+  const list = currentLesson.value.practice.customCompletions[panel]
+  if (Array.isArray(list)) {
+    list.push({
+      label: '',
+      detail: '',
+      insertText: '',
+    })
+  }
+}
+
+function removeCompletionItem(panel: 'html' | 'css' | 'js', index: number) {
+  ensureCustomCompletions()
+  if (!currentLesson.value?.practice?.customCompletions) return
+  const list = currentLesson.value.practice.customCompletions[panel]
+  if (Array.isArray(list)) {
+    list.splice(index, 1)
+  }
+}
+
+function toggleBatchModal(panel: 'html' | 'css' | 'js') {
+  if (showBatchInput.value === panel) {
+    showBatchInput.value = null
+    batchInputText.value = ''
+  } else {
+    showBatchInput.value = panel
+    batchInputText.value = ''
+  }
+}
+
+function applyBatchCompletions(panel: 'html' | 'css' | 'js') {
+  ensureCustomCompletions()
+  if (!currentLesson.value?.practice?.customCompletions || !batchInputText.value.trim()) {
+    showBatchInput.value = null
+    return
+  }
+  const raw = batchInputText.value
+  const tokens = raw
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const list = currentLesson.value.practice.customCompletions[panel] || []
+  const existingLabels = new Set(list.map((item) => (typeof item === 'string' ? item : item.label).toLowerCase()))
+
+  for (const token of tokens) {
+    if (existingLabels.has(token.toLowerCase())) continue
+    existingLabels.add(token.toLowerCase())
+    let insert = token
+    if (
+      panel === 'html' &&
+      token.startsWith('<') &&
+      !token.startsWith('</') &&
+      !token.endsWith('/>') &&
+      token.endsWith('>')
+    ) {
+      const tagName = token.slice(1, -1).split(' ')[0]
+      insert = `<${tagName}></${tagName}>`
+    } else if (
+      panel === 'css' &&
+      !token.includes(':') &&
+      !token.startsWith('@') &&
+      !token.startsWith(':') &&
+      !token.startsWith('.') &&
+      !token.startsWith('#')
+    ) {
+      insert = `${token}: `
+    }
+
+    list.push({
+      label: token,
+      detail: '',
+      insertText: insert,
+    })
+  }
+
+  currentLesson.value.practice.customCompletions[panel] = list
+  batchInputText.value = ''
+  showBatchInput.value = null
+}
+
+function extractCompletionsFromAnswer(panel: 'html' | 'css' | 'js') {
+  ensureCustomCompletions()
+  if (!currentLesson.value?.practice?.customCompletions) return
+  const answerCode = currentLesson.value.practice.answer[panel] || ''
+  if (!answerCode.trim()) {
+    alert(`此題目的 ${panel.toUpperCase()} 參考答案尚無內容，無法自動擷取！`)
+    return
+  }
+
+  const list = currentLesson.value.practice.customCompletions[panel] || []
+  const existingLabels = new Set(list.map((item) => (typeof item === 'string' ? item : item.label).toLowerCase()))
+
+  const extracted: { label: string; detail: string; insertText: string }[] = []
+
+  if (panel === 'html') {
+    // 擷取 HTML 標籤
+    const tagMatches = answerCode.match(/<([a-zA-Z0-9]+)[^>]*>/g) || []
+    for (const tag of tagMatches) {
+      const m = tag.match(/<([a-zA-Z0-9]+)/)
+      if (m && m[1]) {
+        const tagName = m[1].toLowerCase()
+        const label = `<${tagName}>`
+        if (!existingLabels.has(label)) {
+          existingLabels.add(label)
+          extracted.push({
+            label,
+            detail: '參考答案標籤',
+            insertText: `<${tagName}></${tagName}>`,
+          })
+        }
+      }
+    }
+    // 擷取特定重要屬性
+    const attrMatches = answerCode.match(/\b(required|placeholder|type=["'][^"']+["'])/g) || []
+    for (const attr of attrMatches) {
+      if (!existingLabels.has(attr.toLowerCase())) {
+        existingLabels.add(attr.toLowerCase())
+        extracted.push({
+          label: attr,
+          detail: '常用屬性',
+          insertText: attr,
+        })
+      }
+    }
+  } else if (panel === 'css') {
+    // 擷取 CSS 屬性
+    const propMatches = answerCode.match(/([a-zA-Z-]+)\s*:\s*([^;]+);/g) || []
+    for (const rule of propMatches) {
+      const parts = rule.split(':')
+      const prop = parts[0].trim()
+      const val = parts.slice(1).join(':').replace(/;$/, '').trim()
+      const simpleLabel = prop
+      if (!existingLabels.has(simpleLabel.toLowerCase())) {
+        existingLabels.add(simpleLabel.toLowerCase())
+        extracted.push({
+          label: simpleLabel,
+          detail: `${val}`,
+          insertText: `${simpleLabel}: ${val};`,
+        })
+      }
+    }
+    // 擷取偽類
+    const pseudoMatches = answerCode.match(/:[a-zA-Z-()]+/g) || []
+    for (const ps of pseudoMatches) {
+      if (!existingLabels.has(ps.toLowerCase())) {
+        existingLabels.add(ps.toLowerCase())
+        extracted.push({
+          label: ps,
+          detail: '偽類狀態',
+          insertText: ps,
+        })
+      }
+    }
+  } else if (panel === 'js') {
+    // 擷取 JS 常見方法與 API
+    const jsKeywords = [
+      'querySelector',
+      'querySelectorAll',
+      'getElementById',
+      'createElement',
+      'appendChild',
+      'append',
+      'remove',
+      'addEventListener',
+      'textContent',
+      'innerHTML',
+      'classList.toggle',
+      'classList.add',
+      'classList.remove',
+      'classList.contains',
+      'preventDefault',
+      'target.value',
+      'Math.max',
+      'Math.min',
+      'setTimeout',
+    ]
+    for (const kw of jsKeywords) {
+      if (answerCode.includes(kw) && !existingLabels.has(kw.toLowerCase())) {
+        existingLabels.add(kw.toLowerCase())
+        let insert = kw
+        if (kw.includes('querySelector')) insert = `document.${kw}('')`
+        else if (kw.includes('addEventListener')) insert = `addEventListener('click', () => {\n  \n})`
+        else if (kw.includes('createElement')) insert = `document.createElement('')`
+        else if (kw.includes('toggle')) insert = `${kw}('')`
+        extracted.push({
+          label: kw,
+          detail: '參考答案方法',
+          insertText: insert,
+        })
+      }
+    }
+  }
+
+  if (extracted.length === 0) {
+    alert(`從 ${panel.toUpperCase()} 參考答案中未發現新的關鍵語法或已全部加入！`)
+    return
+  }
+
+  list.push(...extracted)
+  currentLesson.value.practice.customCompletions[panel] = list
 }
 
 // ================== 階段管理 ==================
@@ -1373,6 +1608,134 @@ function handleResetDefault() {
                 spellcheck="false"
                 placeholder="輸入參考 JavaScript 答案..."
               ></textarea>
+            </div>
+
+            <!-- 題目專屬代碼補全詞語設定 (Custom Autocomplete Keywords) -->
+            <div class="custom-completions-section mt-15">
+              <div class="editor-tabs-header">
+                <div class="header-title-group">
+                  <label>題目專屬代碼補全詞語 (challengeCustomCompletions)</label>
+                  <span class="md-hint">💡 設定學生在實作此題時，代碼編輯器優先提示與推薦的專屬詞語</span>
+                </div>
+                <div class="editor-sub-tabs">
+                  <button
+                    type="button"
+                    :class="{ active: completionTab === 'html' }"
+                    @click="completionTab = 'html'"
+                  >
+                    HTML ({{ (currentLesson.practice.customCompletions?.html || []).length }})
+                  </button>
+                  <button
+                    type="button"
+                    :class="{ active: completionTab === 'css' }"
+                    @click="completionTab = 'css'"
+                  >
+                    CSS ({{ (currentLesson.practice.customCompletions?.css || []).length }})
+                  </button>
+                  <button
+                    type="button"
+                    :class="{ active: completionTab === 'js' }"
+                    @click="completionTab = 'js'"
+                  >
+                    JavaScript ({{ (currentLesson.practice.customCompletions?.js || []).length }})
+                  </button>
+                </div>
+              </div>
+
+              <!-- 操作功能按鈕列 -->
+              <div class="completions-toolbar">
+                <button
+                  type="button"
+                  class="btn-text-sm"
+                  @click="addCompletionItem(completionTab)"
+                >
+                  ➕ 新增 {{ completionTab.toUpperCase() }} 詞語
+                </button>
+                <button
+                  type="button"
+                  class="btn-text-sm btn-magic"
+                  title="自動掃描上方參考答案提取標籤或常用語法"
+                  @click="extractCompletionsFromAnswer(completionTab)"
+                >
+                  ⚡ 從參考答案自動擷取
+                </button>
+                <button
+                  type="button"
+                  class="btn-text-sm"
+                  @click="toggleBatchModal(completionTab)"
+                >
+                  📝 批次快速加入
+                </button>
+              </div>
+
+              <!-- 批次貼上輸入抽屜 -->
+              <div v-if="showBatchInput === completionTab" class="batch-input-box">
+                <div class="batch-header">
+                  <span>貼上多個詞語（支援換行或以逗號分隔）：</span>
+                  <button type="button" class="btn-text-xs" @click="showBatchInput = null">✕ 取消</button>
+                </div>
+                <textarea
+                  v-model="batchInputText"
+                  rows="3"
+                  class="input-control"
+                  placeholder="例如：<header>, <nav>, <main>, <article>, <footer> 或 display: flex, gap, align-items"
+                ></textarea>
+                <div class="batch-actions">
+                  <button type="button" class="btn btn-primary btn-sm" @click="applyBatchCompletions(completionTab)">
+                    確認解析並加入
+                  </button>
+                </div>
+              </div>
+
+              <!-- 詞語列表 -->
+              <div class="completions-list">
+                <div
+                  v-if="!(currentLesson.practice.customCompletions?.[completionTab] || []).length"
+                  class="completions-empty"
+                >
+                  <span>目前尚未為 {{ completionTab.toUpperCase() }} 指定此題目的專屬詞語（學生將使用通用代碼補全）。點擊上方「➕ 新增詞語」或「⚡ 從參考答案自動擷取」！</span>
+                </div>
+
+                <div
+                  v-for="(item, idx) in (currentLesson.practice.customCompletions?.[completionTab] || [])"
+                  :key="idx"
+                  class="completion-edit-row"
+                >
+                  <span class="row-num">{{ idx + 1 }}</span>
+                  <div class="input-col col-label">
+                    <label>詞語 / 標籤名稱</label>
+                    <input
+                      v-model="item.label"
+                      class="input-control"
+                      placeholder="如 <header> 或 box-sizing"
+                    />
+                  </div>
+                  <div class="input-col col-detail">
+                    <label>說明提示 (可選)</label>
+                    <input
+                      v-model="item.detail"
+                      class="input-control"
+                      placeholder="如 頁首語意標籤 或 盒模型"
+                    />
+                  </div>
+                  <div class="input-col col-insert">
+                    <label>插入代碼 (留空自動帶入)</label>
+                    <input
+                      v-model="item.insertText"
+                      class="input-control"
+                      placeholder="留空自動帶入或自動閉合標籤"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    class="btn-icon-danger"
+                    title="刪除詞語"
+                    @click="removeCompletionItem(completionTab, idx)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

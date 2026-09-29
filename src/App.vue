@@ -1266,6 +1266,7 @@ ${raw}
               v-model="code"
               v-model:active-panel="activePanel"
               :errors="aiResult?.errors || []"
+              :custom-completions="lesson.practice?.customCompletions"
             />
             <div class="preview-panel">
               <div class="preview-toolbar"><span><i></i> 即時預覽</span><small>輸入程式碼後會立即更新</small></div>

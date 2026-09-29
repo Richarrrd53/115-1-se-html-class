@@ -7,9 +7,11 @@ import {
   type Lesson,
   type Code,
   type Concept,
+  type CustomCompletionItem,
+  type LessonCustomCompletions,
 } from './lessons'
 
-export type { Stage, Lesson, Code, Concept }
+export type { Stage, Lesson, Code, Concept, CustomCompletionItem, LessonCustomCompletions }
 
 const STORAGE_KEY = 'webcraft_custom_courses_v1'
 
@@ -88,12 +90,13 @@ export interface CourseLessonRow {
   practice_answer_html: string
   practice_answer_css: string
   practice_answer_js: string
+  practice_custom_completions?: LessonCustomCompletions
   created_at?: string
   updated_at?: string
 }
 
 /**
- * 讀取時解碼：將字面上的 \\n, \\r\\n, \\t 等轉義符號轉換為真實的換行與縮排功能
+ * 讀取時解碼：將字面上的 \n, \r\n, \t 等轉義符號轉換為真實的換行與縮排功能
  */
 export function decodeFormatText(val: string | null | undefined): string {
   if (!val || typeof val !== 'string') return ''
@@ -104,7 +107,7 @@ export function decodeFormatText(val: string | null | undefined): string {
 }
 
 /**
- * 寫入時正規化：統一各作業系統換行 (\r\n -> \n)，若有未轉換的字面 \\n 亦一併轉為真實換行
+ * 寫入時正規化：統一各作業系統換行 (\r\n -> \n)，若有未轉換的字面 \n 亦一併轉為真實換行
  */
 export function encodeFormatText(val: string | null | undefined): string {
   if (!val || typeof val !== 'string') return ''
@@ -113,6 +116,34 @@ export function encodeFormatText(val: string | null | undefined): string {
     .replace(/\r/g, '\n')
     .replace(/\\r\\n/g, '\n')
     .replace(/\\n/g, '\n')
+}
+
+export function normalizeCustomItems(items?: (string | CustomCompletionItem)[]): CustomCompletionItem[] {
+  if (!Array.isArray(items)) return []
+  return items.map((it) => {
+    if (typeof it === 'string') {
+      const trimmed = decodeFormatText(it)
+      return {
+        label: trimmed,
+        detail: '本題專屬詞語',
+        insertText: trimmed,
+      }
+    }
+    return {
+      label: decodeFormatText(it.label),
+      detail: decodeFormatText(it.detail || ''),
+      insertText: decodeFormatText(it.insertText || it.label),
+    }
+  })
+}
+
+export function encodeCustomItems(items?: CustomCompletionItem[]): CustomCompletionItem[] {
+  if (!Array.isArray(items)) return []
+  return items.map((it) => ({
+    label: encodeFormatText(it.label),
+    detail: encodeFormatText(it.detail || ''),
+    insertText: encodeFormatText(it.insertText || it.label),
+  }))
 }
 
 export function decodeLesson(l: Lesson): Lesson {
@@ -146,6 +177,11 @@ export function decodeLesson(l: Lesson): Lesson {
         html: decodeFormatText(l.practice?.answer?.html),
         css: decodeFormatText(l.practice?.answer?.css),
         js: decodeFormatText(l.practice?.answer?.js),
+      },
+      customCompletions: {
+        html: normalizeCustomItems(l.practice?.customCompletions?.html),
+        css: normalizeCustomItems(l.practice?.customCompletions?.css),
+        js: normalizeCustomItems(l.practice?.customCompletions?.js),
       },
     },
   }
@@ -183,6 +219,11 @@ export function encodeLesson(l: Lesson): Lesson {
         css: encodeFormatText(l.practice?.answer?.css),
         js: encodeFormatText(l.practice?.answer?.js),
       },
+      customCompletions: {
+        html: encodeCustomItems(l.practice?.customCompletions?.html),
+        css: encodeCustomItems(l.practice?.customCompletions?.css),
+        js: encodeCustomItems(l.practice?.customCompletions?.js),
+      },
     },
   }
 }
@@ -210,6 +251,7 @@ export function lessonToRow(l: Lesson): CourseLessonRow {
     practice_answer_html: enc.practice?.answer?.html || '',
     practice_answer_css: enc.practice?.answer?.css || '',
     practice_answer_js: enc.practice?.answer?.js || '',
+    practice_custom_completions: enc.practice?.customCompletions || { html: [], css: [], js: [] },
     updated_at: new Date().toISOString(),
   }
 }
@@ -243,6 +285,7 @@ export function rowToLesson(r: CourseLessonRow): Lesson {
         css: r.practice_answer_css || '',
         js: r.practice_answer_js || '',
       },
+      customCompletions: r.practice_custom_completions || { html: [], css: [], js: [] },
     },
   }
   return decodeLesson(raw)
@@ -353,7 +396,12 @@ export async function saveCourseDataToDatabase(): Promise<{ success: boolean; me
       const lessonRows = lessons.value.map((l) => lessonToRow(l))
 
       const { error: stageErr } = await supabase.from('course_stages').upsert(stageRows)
-      const { error: lessonErr } = await supabase.from('course_lessons').upsert(lessonRows)
+      let { error: lessonErr } = await supabase.from('course_lessons').upsert(lessonRows)
+      if (lessonErr && (lessonErr.message?.includes('practice_custom_completions') || (lessonErr as any).code === '42703')) {
+        const fallbackRows = lessonRows.map(({ practice_custom_completions, ...rest }) => rest)
+        const res = await supabase.from('course_lessons').upsert(fallbackRows)
+        lessonErr = res.error
+      }
 
       if (!stageErr && !lessonErr) {
         savedNormalized = true
@@ -532,6 +580,11 @@ export function createEmptyLesson(stageId: number): Lesson {
         css: '.practice {\n  padding: 12px;\n  color: #3149d8;\n}',
         js: '// 參考程式碼\n',
       },
+      customCompletions: {
+        html: [],
+        css: [],
+        js: [],
+      },
     },
   }
 }
@@ -624,6 +677,10 @@ export function generateLessonsTsCode(): string {
     return `  ${l.number}: code(${JSON.stringify(l.practice.answer.html)}, ${JSON.stringify(l.practice.answer.css)}, ${JSON.stringify(l.practice.answer.js)}),`
   }).join('\n')
 
+  const completionEntries = lessons.value.map(l => {
+    return `  ${l.number}: ${JSON.stringify(l.practice.customCompletions || { html: [], css: [], js: [] })},`
+  }).join('\n')
+
   const topicEntries = lessons.value.map(l => {
     return `  [${l.stage}, ${l.number}, ${JSON.stringify(l.title)}, ${JSON.stringify(l.objective)}, ${JSON.stringify(l.example.title)}, code(${JSON.stringify(l.example.code)}, ${JSON.stringify(l.example.preview)}), ${JSON.stringify(l.practice.instructions)}, ${JSON.stringify(l.practice.checklist)}, ${JSON.stringify(l.practice.answer.html)}],`
   }).join('\n')
@@ -631,11 +688,27 @@ export function generateLessonsTsCode(): string {
   return `export type Code = { html: string; css: string; js: string }
 export type Concept = { name: string; description: string }
 export type Stage = { id: number; title: string }
+export interface CustomCompletionItem {
+  label: string
+  detail?: string
+  insertText?: string
+}
+export interface LessonCustomCompletions {
+  html?: CustomCompletionItem[]
+  css?: CustomCompletionItem[]
+  js?: CustomCompletionItem[]
+}
 export type Lesson = {
   id: string; number: number; stage: number; type: string; title: string; objective: string
   introduction: string; concepts: Concept[]
   example: { title: string; description: string; code: string; preview: string }
-  practice: { instructions: string; starterCode: Code; checklist: string[]; answer: Code }
+  practice: {
+    instructions: string
+    starterCode: Code
+    checklist: string[]
+    answer: Code
+    customCompletions?: LessonCustomCompletions
+  }
 }
 
 export const stages: Stage[] = [
@@ -702,6 +775,10 @@ const challengeAnswers: Record<number, Code> = {
 ${answerEntries}
 }
 
+export const challengeCompletions: Record<number, LessonCustomCompletions> = {
+${completionEntries}
+}
+
 const topics: [number, number, string, string, string, Code, string, string[], string][] = [
 ${topicEntries}
 ]
@@ -719,6 +796,7 @@ export const lessons: Lesson[] = topics.map((topic) => {
       starterCode: formatCodeSet(challengeStarters[number] || code('')),
       checklist: checklist || [],
       answer: formatCodeSet(challengeAnswers[number] || code('')),
+      customCompletions: challengeCompletions[number] || { html: [], css: [], js: [] },
     },
   }
 })

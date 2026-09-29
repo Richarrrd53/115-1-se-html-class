@@ -21,11 +21,24 @@ export interface ColorMatch {
   hex: string
 }
 
+export interface CustomCompletionWord {
+  label: string
+  detail?: string
+  insertText?: string
+}
+
+export interface LessonCustomCompletions {
+  html?: (string | CustomCompletionWord)[]
+  css?: (string | CustomCompletionWord)[]
+  js?: (string | CustomCompletionWord)[]
+}
+
 const props = withDefaults(
   defineProps<{
     modelValue: EditorCode
     activePanel?: 'html' | 'css' | 'js'
     errors?: EditorError[]
+    customCompletions?: LessonCustomCompletions
   }>(),
   {
     activePanel: 'html',
@@ -56,40 +69,309 @@ interface CompletionItem {
   label: string
   detail: string
   insertText: string
+  isCustom?: boolean
 }
 
-const completionItems: Record<'html' | 'css' | 'js', CompletionItem[]> = {
+// 內建完整程式碼自動補全項目（HTML / CSS / JavaScript）
+const builtInCompletions: Record<'html' | 'css' | 'js', CompletionItem[]> = {
   html: [
-    { label: '<div>', detail: '區塊元素', insertText: '<div></div>' },
-    { label: '<section>', detail: '內容區段', insertText: '<section></section>' },
+    // 結構與排版
+    { label: '<header>', detail: '頁首區塊標籤', insertText: '<header></header>' },
+    { label: '<nav>', detail: '導覽列區塊標籤', insertText: '<nav></nav>' },
+    { label: '<main>', detail: '主要內容區塊標籤', insertText: '<main></main>' },
+    { label: '<section>', detail: '內容章節段落區塊', insertText: '<section></section>' },
+    { label: '<article>', detail: '獨立文章區塊標籤', insertText: '<article></article>' },
+    { label: '<aside>', detail: '側邊欄或補充區塊', insertText: '<aside></aside>' },
+    { label: '<footer>', detail: '頁尾區塊標籤', insertText: '<footer></footer>' },
+    { label: '<div>', detail: '通用容器元素', insertText: '<div></div>' },
+    { label: '<p>', detail: '段落文字元素', insertText: '<p></p>' },
+    { label: '<span>', detail: '行內文字元素', insertText: '<span></span>' },
+    { label: '<h1>', detail: '第一層大標題', insertText: '<h1></h1>' },
+    { label: '<h2>', detail: '第二層標題', insertText: '<h2></h2>' },
+    { label: '<h3>', detail: '第三層標題', insertText: '<h3></h3>' },
+    { label: '<strong>', detail: '粗體強調元素', insertText: '<strong></strong>' },
+    { label: '<em>', detail: '斜體強調元素', insertText: '<em></em>' },
+    { label: '<a href="">', detail: '超連結元素', insertText: '<a href=""></a>' },
+    { label: '<img src="" alt="">', detail: '影像圖片元素', insertText: '<img src="" alt="">' },
+    // 清單與表格
+    { label: '<ul>', detail: '無序清單容器', insertText: '<ul>\n  <li></li>\n</ul>' },
+    { label: '<ol>', detail: '有序清單容器', insertText: '<ol>\n  <li></li>\n</ol>' },
+    { label: '<li>', detail: '清單項目', insertText: '<li></li>' },
+    { label: '<table>', detail: '表格容器', insertText: '<table>\n  <tr><th></th></tr>\n  <tr><td></td></tr>\n</table>' },
+    { label: '<caption>', detail: '表格標題', insertText: '<caption></caption>' },
+    { label: '<tr>', detail: '表格列 (橫排)', insertText: '<tr></tr>' },
+    { label: '<th>', detail: '表頭欄位儲存格', insertText: '<th></th>' },
+    { label: '<td>', detail: '資料儲存格', insertText: '<td></td>' },
+    // 表單
+    { label: '<form>', detail: '表單容器', insertText: '<form>\n  \n</form>' },
+    { label: '<label>', detail: '欄位標籤', insertText: '<label for=""></label>' },
+    { label: '<input>', detail: '單行輸入框', insertText: '<input type="text">' },
     { label: '<button>', detail: '按鈕元素', insertText: '<button></button>' },
-    { label: '<h1>', detail: '標題元素', insertText: '<h1></h1>' },
-    { label: '<p>', detail: '段落元素', insertText: '<p></p>' },
-    { label: 'class=""', detail: 'HTML 屬性', insertText: 'class=""' },
-    { label: 'id=""', detail: 'HTML 屬性', insertText: 'id=""' },
-    { label: 'aria-label=""', detail: '無障礙屬性', insertText: 'aria-label=""' },
+    { label: '<textarea>', detail: '多行文字輸入框', insertText: '<textarea></textarea>' },
+    { label: '<select>', detail: '下拉選單元素', insertText: '<select>\n  <option value=""></option>\n</select>' },
+    { label: '<option>', detail: '選單項目', insertText: '<option value=""></option>' },
+    // HTML 屬性
+    { label: 'class=""', detail: 'Class 樣式類別', insertText: 'class=""' },
+    { label: 'id=""', detail: '唯一 ID 識別名稱', insertText: 'id=""' },
+    { label: 'placeholder=""', detail: '輸入框預設提示', insertText: 'placeholder=""' },
+    { label: 'type="text"', detail: '文字輸入類型', insertText: 'type="text"' },
+    { label: 'type="password"', detail: '密碼輸入類型', insertText: 'type="password"' },
+    { label: 'type="email"', detail: '信箱輸入類型', insertText: 'type="email"' },
+    { label: 'type="number"', detail: '數字輸入類型', insertText: 'type="number"' },
+    { label: 'type="submit"', detail: '送出按鈕類型', insertText: 'type="submit"' },
+    { label: 'required', detail: '必填欄位屬性', insertText: 'required' },
+    { label: 'disabled', detail: '禁用控制項屬性', insertText: 'disabled' },
+    { label: 'style=""', detail: '行內樣式屬性', insertText: 'style=""' },
+    { label: 'aria-label=""', detail: '無障礙輔助標籤', insertText: 'aria-label=""' },
   ],
   css: [
-    { label: 'color', detail: '文字顏色', insertText: 'color: ' },
-    { label: 'background-color', detail: '背景顏色', insertText: 'background-color: ' },
-    { label: 'display', detail: '排列方式', insertText: 'display: ' },
-    { label: 'flex-direction', detail: 'Flex 方向', insertText: 'flex-direction: ' },
-    { label: 'justify-content', detail: '主軸對齊', insertText: 'justify-content: ' },
-    { label: 'align-items', detail: '交叉軸對齊', insertText: 'align-items: ' },
+    // 盒模型與排版
+    { label: 'display: flex', detail: '啟動 Flexbox 排版', insertText: 'display: flex;' },
+    { label: 'display: grid', detail: '啟動 Grid 網格排版', insertText: 'display: grid;' },
+    { label: 'display: block', detail: '區塊元素排列', insertText: 'display: block;' },
+    { label: 'display: inline-block', detail: '行內區塊排列', insertText: 'display: inline-block;' },
+    { label: 'display: none', detail: '隱藏元素', insertText: 'display: none;' },
+    { label: 'flex-direction', detail: 'Flex 主軸方向', insertText: 'flex-direction: ' },
+    { label: 'justify-content', detail: '主軸對齊方式', insertText: 'justify-content: ' },
+    { label: 'align-items', detail: '交叉軸對齊方式', insertText: 'align-items: ' },
+    { label: 'flex-wrap', detail: 'Flex 自動換行', insertText: 'flex-wrap: wrap;' },
+    { label: 'flex: 1', detail: '彈性比例均分', insertText: 'flex: 1;' },
+    { label: 'gap', detail: '排版間距', insertText: 'gap: ' },
+    { label: 'box-sizing: border-box', detail: '尺寸包含內距邊框', insertText: 'box-sizing: border-box;' },
+    { label: 'box-sizing: content-box', detail: '標準內容盒模型', insertText: 'box-sizing: content-box;' },
+    { label: 'width', detail: '寬度', insertText: 'width: ' },
+    { label: 'height', detail: '高度', insertText: 'height: ' },
+    { label: 'max-width', detail: '最大寬度', insertText: 'max-width: ' },
+    { label: 'min-width', detail: '最小寬度', insertText: 'min-width: ' },
     { label: 'margin', detail: '外距', insertText: 'margin: ' },
+    { label: 'margin: 0 auto', detail: '區塊水平居中', insertText: 'margin: 0 auto;' },
     { label: 'padding', detail: '內距', insertText: 'padding: ' },
-    { label: 'border-radius', detail: '圓角', insertText: 'border-radius: ' },
+    // 色彩、背景與邊框
+    { label: 'color', detail: '文字顏色', insertText: 'color: ' },
+    { label: 'background', detail: '背景屬性', insertText: 'background: ' },
+    { label: 'background-color', detail: '背景顏色', insertText: 'background-color: ' },
+    { label: 'background-image', detail: '背景圖片', insertText: 'background-image: ' },
+    { label: 'linear-gradient', detail: '線性漸層色', insertText: 'linear-gradient(135deg, , )' },
+    { label: 'border', detail: '邊框設定', insertText: 'border: 1px solid ;' },
+    { label: 'border-radius', detail: '圓角半徑', insertText: 'border-radius: ' },
+    { label: 'border-radius: 50%', detail: '正圓形造型', insertText: 'border-radius: 50%;' },
+    { label: 'border-radius: 999px', detail: '膠囊圓角按鈕', insertText: 'border-radius: 999px;' },
+    { label: 'box-shadow', detail: '盒子立體陰影', insertText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);' },
+    { label: 'text-shadow', detail: '文字立體陰影', insertText: 'text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);' },
+    { label: 'backdrop-filter: blur()', detail: '毛玻璃背景模糊濾鏡', insertText: 'backdrop-filter: blur(10px);' },
+    // 字型排版
+    { label: 'font-size', detail: '字體大小', insertText: 'font-size: ' },
+    { label: 'font-weight', detail: '字體粗細', insertText: 'font-weight: ' },
+    { label: 'line-height', detail: '行距高度', insertText: 'line-height: ' },
+    { label: 'letter-spacing', detail: '字元間隔', insertText: 'letter-spacing: ' },
+    { label: 'text-align', detail: '文字對齊方向', insertText: 'text-align: ' },
+    { label: 'text-decoration', detail: '文字裝飾底線', insertText: 'text-decoration: none;' },
+    // 定位與動態
+    { label: 'position: relative', detail: '相對定位', insertText: 'position: relative;' },
+    { label: 'position: absolute', detail: '絕對定位', insertText: 'position: absolute;' },
+    { label: 'transform', detail: '2D/3D 空間變形', insertText: 'transform: ' },
+    { label: 'transform-origin', detail: '變形基準錨點', insertText: 'transform-origin: ' },
+    { label: 'transition', detail: '平滑狀態過渡動畫', insertText: 'transition: all 0.3s ease;' },
+    { label: 'cursor: pointer', detail: '懸停手型游標', insertText: 'cursor: pointer;' },
+    { label: 'overflow: hidden', detail: '溢出內容隱藏', insertText: 'overflow: hidden;' },
+    { label: 'opacity', detail: '透明度', insertText: 'opacity: ' },
+    // 偽類與偽元素
+    { label: ':hover', detail: '滑鼠懸停狀態偽類', insertText: ':hover {\n  \n}' },
+    { label: ':active', detail: '滑鼠點擊按壓狀態', insertText: ':active {\n  \n}' },
+    { label: ':focus', detail: '輸入焦點聚焦狀態', insertText: ':focus {\n  \n}' },
+    { label: ':nth-child()', detail: '指定序號子元素偽類', insertText: ':nth-child(even)' },
+    { label: '::before', detail: '元素內容前置偽元素', insertText: '::before {\n  content: "";\n}' },
+    { label: '::after', detail: '元素內容後置偽元素', insertText: '::after {\n  content: "";\n}' },
   ],
   js: [
+    // 變數與關鍵字
     { label: 'const', detail: '宣告常數', insertText: 'const ' },
     { label: 'let', detail: '宣告變數', insertText: 'let ' },
-    { label: 'document.querySelector', detail: '選取元素', insertText: 'document.querySelector()' },
-    { label: 'addEventListener', detail: '監聽事件', insertText: 'addEventListener()' },
-    { label: 'textContent', detail: '設定文字內容', insertText: 'textContent' },
-    { label: 'classList', detail: '操作 class', insertText: 'classList' },
-    { label: 'function', detail: '建立函式', insertText: 'function ' },
-    { label: 'if', detail: '條件判斷', insertText: 'if ()' },
+    { label: 'function', detail: '定義具名函式', insertText: 'function name() {\n  \n}' },
+    { label: 'return', detail: '函式回傳值', insertText: 'return ' },
+    { label: 'console.log', detail: '印出除錯訊息', insertText: 'console.log()' },
+    { label: 'if', detail: '條件判斷式', insertText: 'if () {\n  \n}' },
+    { label: 'if / else', detail: '條件分支判斷', insertText: 'if () {\n  \n} else {\n  \n}' },
+    { label: 'for', detail: '計數迴圈', insertText: 'for (let i = 0; i < length; i++) {\n  \n}' },
+    // DOM 選取
+    { label: 'document.querySelector', detail: '選取首個匹配的 DOM 元素', insertText: "document.querySelector('')" },
+    { label: 'document.querySelectorAll', detail: '選取全部符合的 DOM 元素', insertText: "document.querySelectorAll('')" },
+    { label: 'document.getElementById', detail: '依照 ID 選取元素', insertText: "document.getElementById('')" },
+    { label: 'document.createElement', detail: '動態建立新的 HTML 元素', insertText: "document.createElement('')" },
+    // 事件處理
+    { label: 'addEventListener', detail: '監聽使用者操作事件', insertText: "addEventListener('click', (event) => {\n  \n})" },
+    { label: "'click'", detail: '點擊事件名稱', insertText: "'click'" },
+    { label: "'input'", detail: '即時輸入變更事件', insertText: "'input'" },
+    { label: "'change'", detail: '值確認變更事件', insertText: "'change'" },
+    { label: 'event.target', detail: '事件觸發目標節點', insertText: 'event.target' },
+    { label: 'event.preventDefault()', detail: '阻止瀏覽器預設行為', insertText: 'event.preventDefault()' },
+    // DOM 操作與屬性
+    { label: 'textContent', detail: '讀取或修改元素純文字內容', insertText: 'textContent' },
+    { label: 'innerHTML', detail: '讀取或修改元素 HTML 結構', insertText: 'innerHTML' },
+    { label: 'value', detail: '輸入框欄位當前數值', insertText: 'value' },
+    { label: 'appendChild', detail: '將節點加入至子元素末尾', insertText: 'appendChild()' },
+    { label: 'append', detail: '插入多個節點或文字字串', insertText: 'append()' },
+    { label: 'remove', detail: '從 DOM 樹中刪除該節點', insertText: 'remove()' },
+    { label: 'setAttribute', detail: '設定元素指定 HTML 屬性', insertText: "setAttribute('', '')" },
+    { label: 'getAttribute', detail: '取得元素指定 HTML 屬性值', insertText: "getAttribute('')" },
+    { label: 'classList.add', detail: '新增 CSS 樣式類別', insertText: "classList.add('')" },
+    { label: 'classList.remove', detail: '移除 CSS 樣式類別', insertText: "classList.remove('')" },
+    { label: 'classList.toggle', detail: '切換 CSS 樣式類別狀態', insertText: "classList.toggle('')" },
+    { label: 'classList.contains', detail: '檢查是否含有特定 class', insertText: "classList.contains('')" },
+    { label: 'style', detail: '直接存取或修改行內樣式', insertText: 'style.' },
+    // 常用工具
+    { label: 'Math.max', detail: '取得陣列或數值最大值', insertText: 'Math.max()' },
+    { label: 'Math.min', detail: '取得陣列或數值最小值', insertText: 'Math.min()' },
+    { label: 'Math.round', detail: '四捨五入計算', insertText: 'Math.round()' },
+    { label: 'parseInt', detail: '將字串轉為整數數值', insertText: 'parseInt()' },
+    { label: 'setTimeout', detail: '非同步延遲計時器', insertText: 'setTimeout(() => {\n  \n}, 1000)' },
+    { label: 'JSON.stringify', detail: '將物件轉為 JSON 字串', insertText: 'JSON.stringify()' },
+    { label: 'JSON.parse', detail: '將 JSON 字串解析為物件', insertText: 'JSON.parse()' },
   ],
+}
+
+// 合併題目專屬自訂詞語與內建完整補全庫，題目自訂詞語優先排序置頂
+const activePanelCompletions = computed<CompletionItem[]>(() => {
+  const panel = props.activePanel
+  const customList = props.customCompletions?.[panel] || []
+
+  const formattedCustom: CompletionItem[] = []
+  for (const c of customList) {
+    if (!c) continue
+    if (typeof c === 'string') {
+      const trimmed = c.trim()
+      if (!trimmed) continue
+      let insert = trimmed
+      if (
+        panel === 'html' &&
+        trimmed.startsWith('<') &&
+        !trimmed.startsWith('</') &&
+        !trimmed.endsWith('/>') &&
+        trimmed.endsWith('>')
+      ) {
+        const tagName = trimmed.slice(1, -1).split(' ')[0]
+        insert = `<${tagName}></${tagName}>`
+      } else if (
+        panel === 'css' &&
+        !trimmed.includes(':') &&
+        !trimmed.startsWith('@') &&
+        !trimmed.startsWith(':') &&
+        !trimmed.startsWith('.') &&
+        !trimmed.startsWith('#')
+      ) {
+        insert = `${trimmed}: `
+      }
+      formattedCustom.push({
+        label: trimmed,
+        detail: '題目指定詞語',
+        insertText: insert,
+        isCustom: true,
+      })
+    } else if (typeof c === 'object' && c.label) {
+      const label = c.label.trim()
+      if (!label) continue
+      let insert = c.insertText?.trim() || label
+      if (
+        !c.insertText &&
+        panel === 'html' &&
+        label.startsWith('<') &&
+        !label.startsWith('</') &&
+        !label.endsWith('/>') &&
+        label.endsWith('>')
+      ) {
+        const tagName = label.slice(1, -1).split(' ')[0]
+        insert = `<${tagName}></${tagName}>`
+      }
+      formattedCustom.push({
+        label,
+        detail: c.detail || '題目指定詞語',
+        insertText: insert,
+        isCustom: true,
+      })
+    }
+  }
+
+  // 避免標籤完全重複
+  const seenLabels = new Set(formattedCustom.map((item) => item.label.toLowerCase()))
+  const remainingBuiltIn = (builtInCompletions[panel] || []).filter(
+    (item) => !seenLabels.has(item.label.toLowerCase()),
+  )
+
+  return [...formattedCustom, ...remainingBuiltIn]
+})
+
+// 供快捷列展示的當前語言題目專屬推薦詞語
+const currentCustomWords = computed(() => {
+  const panel = props.activePanel
+  const customList = props.customCompletions?.[panel] || []
+  return customList
+    .map((c) => {
+      if (typeof c === 'string') {
+        const label = c.trim()
+        let insert = label
+        if (
+          panel === 'html' &&
+          label.startsWith('<') &&
+          !label.startsWith('</') &&
+          !label.endsWith('/>') &&
+          label.endsWith('>')
+        ) {
+          const tagName = label.slice(1, -1).split(' ')[0]
+          insert = `<${tagName}></${tagName}>`
+        }
+        return { label, detail: '', insertText: insert }
+      }
+      let insert = c.insertText?.trim() || c.label
+      if (
+        !c.insertText &&
+        panel === 'html' &&
+        c.label.startsWith('<') &&
+        !c.label.startsWith('</') &&
+        !c.label.endsWith('/>') &&
+        c.label.endsWith('>')
+      ) {
+        const tagName = c.label.slice(1, -1).split(' ')[0]
+        insert = `<${tagName}></${tagName}>`
+      }
+      return {
+        label: c.label,
+        detail: c.detail || '',
+        insertText: insert,
+      }
+    })
+    .filter((w) => Boolean(w.label))
+})
+
+function insertCustomWord(word: { label: string; insertText?: string }) {
+  const textarea = textareaRef.value
+  if (!textarea) return
+  const start = textarea.selectionStart
+  const end = textarea.selectionEnd
+  const insert = word.insertText || word.label
+  currentCode.value =
+    textarea.value.substring(0, start) + insert + textarea.value.substring(end)
+  nextTick(() => {
+    let nextCursor = start + insert.length
+    const emptyQuotesIdx = insert.indexOf("''")
+    const emptyDoubleQuotesIdx = insert.indexOf('""')
+    const emptyParensIdx = insert.indexOf('()')
+    const emptyTagsMatch = insert.match(/<([a-zA-Z0-9]+)[^>]*><\/\1>/)
+
+    if (emptyTagsMatch && emptyTagsMatch.index !== undefined) {
+      const openTagLen = emptyTagsMatch[0].indexOf('>') + 1
+      nextCursor = start + emptyTagsMatch.index + openTagLen
+    } else if (emptyDoubleQuotesIdx !== -1) {
+      nextCursor = start + emptyDoubleQuotesIdx + 1
+    } else if (emptyQuotesIdx !== -1) {
+      nextCursor = start + emptyQuotesIdx + 1
+    } else if (emptyParensIdx !== -1) {
+      nextCursor = start + emptyParensIdx + 1
+    }
+
+    textarea.setSelectionRange(nextCursor, nextCursor)
+    textarea.focus()
+    updateCursorInfo()
+  })
 }
 
 // 目前選取要更換顏色的目標
@@ -323,22 +605,69 @@ function updateCursorInfo() {
   updateSuggestions()
 }
 
+// 補全選單的動態游標定位計算
+const menuTop = computed(() => {
+  const lineTop = 12 + cursorLine.value * 24 - (textareaRef.value?.scrollTop || 0)
+  const containerHeight = textareaRef.value?.clientHeight || 400
+  if (lineTop > containerHeight - 190) {
+    return `${Math.max(10, lineTop - 24 - 190)}px`
+  }
+  return `${lineTop}px`
+})
+
+const menuLeft = computed(() => {
+  const colLeft = 14 + (cursorCol.value - 1) * 8.4 - (textareaRef.value?.scrollLeft || 0)
+  return `${Math.max(14, Math.min(colLeft, 340))}px`
+})
+
 function getCompletionContext() {
   const textarea = textareaRef.value
   if (!textarea) return null
 
   const start = textarea.selectionStart
   const beforeCursor = textarea.value.substring(0, start)
-  const match = beforeCursor.match(/(?:<[\w-]*|[.#]?[\w-]+)$/)
-  if (!match || match[0].length < 2) return null
+
+  // 支援 HTML 標籤/屬性、CSS 屬性/選擇器/偽類、JS 物件鏈與標識符
+  const match = beforeCursor.match(/(?:<\/?[a-zA-Z0-9_-]*|::?[a-zA-Z0-9_-]*|@[a-zA-Z0-9_-]*|[a-zA-Z0-9_$]+(?:\.[a-zA-Z0-9_$]*)*|[.#][a-zA-Z0-9_-]*)$/)
+  if (!match) return null
 
   const query = match[0]
-  const options = completionItems[props.activePanel].filter((item) =>
-    item.label.toLowerCase().startsWith(query.toLowerCase()),
-  )
-  if (!options.length) return null
+  if (!query || query.length < 1) return null
 
-  return { query, start: start - query.length, options }
+  const qLower = query.toLowerCase()
+  const qClean = qLower.replace(/^[<:.#@]+/, '')
+
+  const currentItems = activePanelCompletions.value
+  const scored = currentItems
+    .map((item) => {
+      const labelLower = item.label.toLowerCase()
+      const labelClean = labelLower.replace(/^[<:.#@]+/, '')
+      let score = 0
+
+      // 題目自訂詞語優先排序加權
+      if (item.isCustom) score += 100
+
+      if (labelLower === qLower) {
+        score += 120
+      } else if (labelLower.startsWith(qLower)) {
+        score += 90
+      } else if (qClean && labelClean.startsWith(qClean)) {
+        score += 70
+      } else if (labelLower.includes(qLower)) {
+        score += 40
+      } else if (qClean && labelClean.includes(qClean)) {
+        score += 30
+      }
+
+      return { item, score }
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.item)
+
+  if (!scored.length) return null
+
+  return { query, start: start - query.length, options: scored }
 }
 
 function updateSuggestions() {
@@ -364,14 +693,35 @@ function applySuggestion(item?: CompletionItem) {
   const suggestion = item || context.options[selectedSuggestionIndex.value]
   if (!suggestion) return false
   const cursor = textarea.selectionStart
+  const insert = suggestion.insertText || suggestion.label
+
   currentCode.value =
     textarea.value.substring(0, context.start) +
-    suggestion.insertText +
+    insert +
     textarea.value.substring(cursor)
+
   closeSuggestions()
   nextTick(() => {
-    const nextCursor = context.start + suggestion.insertText.length
+    // 智慧游標跳轉至標籤或括號內
+    let nextCursor = context.start + insert.length
+    const emptyQuotesIdx = insert.indexOf("''")
+    const emptyDoubleQuotesIdx = insert.indexOf('""')
+    const emptyParensIdx = insert.indexOf('()')
+    const emptyTagsMatch = insert.match(/<([a-zA-Z0-9]+)[^>]*><\/\1>/)
+
+    if (emptyTagsMatch && emptyTagsMatch.index !== undefined) {
+      const openTagLen = emptyTagsMatch[0].indexOf('>') + 1
+      nextCursor = context.start + emptyTagsMatch.index + openTagLen
+    } else if (emptyDoubleQuotesIdx !== -1) {
+      nextCursor = context.start + emptyDoubleQuotesIdx + 1
+    } else if (emptyQuotesIdx !== -1) {
+      nextCursor = context.start + emptyQuotesIdx + 1
+    } else if (emptyParensIdx !== -1) {
+      nextCursor = context.start + emptyParensIdx + 1
+    }
+
     textarea.setSelectionRange(nextCursor, nextCursor)
+    textarea.focus()
     updateCursorInfo()
   })
   return true
@@ -425,6 +775,13 @@ function handleKeydown(e: KeyboardEvent) {
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
   const value = textarea.value
+
+  // Ctrl + Space 或 Cmd + Space 手動喚醒代碼補全
+  if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+    e.preventDefault()
+    updateSuggestions()
+    return
+  }
 
   if (e.key === 'Escape') {
     closeSuggestions()
@@ -817,6 +1174,30 @@ onMounted(() => {
       </div>
     </div>
 
+    <!-- 題目專屬詞語推薦快捷列（若當前題目有指定詞語時顯示） -->
+    <div v-if="currentCustomWords.length > 0" class="vsc-custom-words-strip">
+      <span class="custom-words-label">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+        </svg>
+        本題推薦語法 ({{ currentCustomWords.length }}):
+      </span>
+      <div class="custom-words-scroll">
+        <button
+          v-for="(w, idx) in currentCustomWords"
+          :key="idx"
+          type="button"
+          class="vsc-custom-word-chip"
+          :title="`${w.detail ? w.detail + ' - ' : ''}點擊直接插入代碼`"
+          @click="insertCustomWord(w)"
+        >
+          <span class="chip-star">★</span>
+          <span class="chip-label">{{ w.label }}</span>
+          <span v-if="w.detail" class="chip-hint">{{ w.detail }}</span>
+        </button>
+      </div>
+    </div>
+
     <!-- 編輯器主工作區 (行號 Gutter + Textarea) -->
     <div class="vsc-main-stage">
       <!-- 行號列 (Gutter) 與每行色彩標記 -->
@@ -880,21 +1261,33 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="suggestionQuery" class="vsc-completion-menu" role="listbox">
+        <div
+          v-if="suggestionQuery && getCompletionContext()?.options.length"
+          class="vsc-completion-menu"
+          :style="{ top: menuTop, left: menuLeft }"
+          role="listbox"
+        >
           <button
             v-for="(item, index) in getCompletionContext()?.options || []"
             :key="item.label"
             type="button"
             class="vsc-completion-item"
-            :class="{ selected: index === selectedSuggestionIndex }"
+            :class="{ selected: index === selectedSuggestionIndex, 'is-custom': item.isCustom }"
             role="option"
             :aria-selected="index === selectedSuggestionIndex"
             @mousedown="handleSuggestionMouseDown(item, $event)"
           >
-            <span class="completion-label">{{ item.label }}</span>
+            <div class="completion-main">
+              <span v-if="item.isCustom" class="completion-badge">★ 本題</span>
+              <span class="completion-label">{{ item.label }}</span>
+            </div>
             <span class="completion-detail">{{ item.detail }}</span>
           </button>
-          <div class="vsc-completion-hint">Tab 套用 · ↑↓ 選擇 · Esc 關閉</div>
+          <div class="vsc-completion-hint">
+            <span>Tab / Enter 套用</span>
+            <span>↑↓ 選擇</span>
+            <span>Esc 關閉</span>
+          </div>
         </div>
 
         <!-- 核心編輯 textarea (支援 Tab 縮排、反縮排、快捷鍵) -->
@@ -1323,37 +1716,117 @@ onMounted(() => {
   box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
 }
 
+.vsc-custom-words-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1c2333;
+  border-bottom: 1px solid #2d3748;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.custom-words-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 700;
+  color: #38bdf8;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+
+.custom-words-scroll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.custom-words-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.vsc-custom-word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  color: #e2e8f0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.vsc-custom-word-chip:hover {
+  border-color: #38bdf8;
+  background: #1e293b;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.chip-star {
+  color: #facc15;
+  font-size: 0.7rem;
+}
+
+.chip-label {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.chip-hint {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* ── 補全選單樣式 ── */
 .vsc-completion-menu {
   position: absolute;
-  top: 42px;
-  left: 14px;
-  z-index: 6;
-  width: min(330px, calc(100% - 28px));
-  max-height: 238px;
+  z-index: 10;
+  width: min(340px, calc(100% - 28px));
+  max-height: 250px;
   overflow-y: auto;
   padding: 4px;
   background: #252526;
   border: 1px solid #454545;
-  border-radius: 4px;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  border-radius: 5px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+  transition: top 0.08s ease, left 0.08s ease;
 }
 
 .vsc-completion-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  min-height: 30px;
-  padding: 5px 8px;
+  min-height: 28px;
+  padding: 4px 8px;
   border: 0;
-  border-radius: 2px;
+  border-radius: 3px;
   background: transparent;
   color: #d4d4d4;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   text-align: left;
   cursor: pointer;
+}
+
+.vsc-completion-item.is-custom {
+  background: rgba(56, 189, 248, 0.06);
 }
 
 .vsc-completion-item.selected,
@@ -1362,10 +1835,33 @@ onMounted(() => {
   color: #ffffff;
 }
 
+.vsc-completion-item.is-custom.selected {
+  background: #0c4a6e;
+}
+
+.completion-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.completion-badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.15);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
 .completion-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .completion-detail {
@@ -1380,10 +1876,12 @@ onMounted(() => {
 }
 
 .vsc-completion-hint {
+  display: flex;
+  justify-content: space-between;
   padding: 5px 8px 3px;
   border-top: 1px solid #3c3c3c;
   color: #858585;
-  font-size: 0.66rem;
+  font-size: 0.65rem;
 }
 
 /* 核心代碼 Textarea */

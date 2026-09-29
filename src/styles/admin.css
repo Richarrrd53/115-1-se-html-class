@@ -1284,3 +1284,114 @@
   gap: 8px;
   margin-top: 18px;
 }
+
+/* ── 題目代碼補全詞語管理樣式 ── */
+.custom-completions-section {
+  background: var(--surface-card-bg, #ffffff);
+  border: 1px solid var(--color-border-subtle, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.completions-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--color-border-subtle, #e2e8f0);
+}
+
+.btn-magic {
+  color: #8b5cf6 !important;
+  background: rgba(139, 92, 246, 0.08) !important;
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+
+.btn-magic:hover {
+  background: rgba(139, 92, 246, 0.16) !important;
+}
+
+.batch-input-box {
+  background: var(--slate-50, #f8fafc);
+  border: 1px solid var(--color-border-default, #cbd5e1);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.batch-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.completions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.completions-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-tertiary, #94a3b8);
+  font-size: var(--font-size-xs, 0.75rem);
+  background: var(--slate-50, #f8fafc);
+  border-radius: 6px;
+  border: 1px dashed var(--color-border-subtle, #e2e8f0);
+}
+
+.completion-edit-row {
+  display: grid;
+  grid-template-columns: 24px 1.2fr 1fr 1.2fr 32px;
+  align-items: center;
+  gap: 8px;
+  background: var(--slate-50, #f8fafc);
+  border: 1px solid var(--color-border-subtle, #e2e8f0);
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: border-color 0.15s ease;
+}
+
+.completion-edit-row:hover {
+  border-color: var(--color-primary, #6366f1);
+}
+
+.completion-edit-row .row-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-text-tertiary, #94a3b8);
+  text-align: center;
+}
+
+.completion-edit-row .input-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.completion-edit-row .input-col label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-tertiary, #94a3b8);
+}
+
+.completion-edit-row .input-col input {
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  height: 28px;
+  font-family: 'Consolas', monospace;
+}
