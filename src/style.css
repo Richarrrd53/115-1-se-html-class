@@ -5220,14 +5220,31 @@ iframe {
   transform: scale(0.96);
 }
 
-button{
+/* 全域一般按鈕互動（排除編輯器、代碼補全選單、晶片快捷標籤等精密容器元件，避免 scale 造成容器異常抖動） */
+button:not([class*="vsc-"]):not([class*="completion"]):not([class*="chip"]):not([class*="tab"]):not([class*="tag"]) {
   transition: all var(--motion-duration-fast) var(--motion-ease-standard) !important;
 }
 
-button:hover{
+button:not([class*="vsc-"]):not([class*="completion"]):not([class*="chip"]):not([class*="tab"]):not([class*="tag"]):hover {
   transform: scale(1.05) !important;
 }
 
-button:active{
+button:not([class*="vsc-"]):not([class*="completion"]):not([class*="chip"]):not([class*="tab"]):not([class*="tag"]):active {
   transform: scale(.95) !important;
+}
+
+/* 明確重設編輯器與補全選單所有按鈕為不縮放 */
+.vsc-editor-root button,
+.vsc-editor-root button:hover,
+.vsc-editor-root button:active,
+.vsc-completion-menu button,
+.vsc-completion-menu button:hover,
+.vsc-completion-menu button:active,
+.vsc-completion-item,
+.vsc-completion-item:hover,
+.vsc-completion-item:active,
+.vsc-custom-word-chip,
+.vsc-custom-word-chip:hover,
+.vsc-custom-word-chip:active {
+  transform: none !important;
 }

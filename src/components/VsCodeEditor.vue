@@ -1351,6 +1351,13 @@ onMounted(() => {
   overflow: hidden;
 }
 
+/* 編輯器內部所有按鈕（分頁、快捷列、工具按鈕、補全項目等）全面禁止 hover/active 放大 scale，杜絕容器抖動 */
+.vsc-editor-root button,
+.vsc-editor-root button:hover,
+.vsc-editor-root button:active {
+  transform: none !important;
+}
+
 .vsc-hidden-color-input {
   position: absolute;
   top: -9999px;
@@ -1764,14 +1771,19 @@ onMounted(() => {
   color: #e2e8f0;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.15s ease;
+  transform: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease !important;
 }
 
 .vsc-custom-word-chip:hover {
   border-color: #38bdf8;
   background: #1e293b;
   color: #ffffff;
-  transform: translateY(-1px);
+  transform: none !important;
+}
+
+.vsc-custom-word-chip:active {
+  transform: none !important;
 }
 
 .chip-star {
@@ -1823,6 +1835,8 @@ onMounted(() => {
   font-size: 0.76rem;
   text-align: left;
   cursor: pointer;
+  transform: none !important;
+  transition: background 0.08s ease, color 0.08s ease !important;
 }
 
 .vsc-completion-item.is-custom {
@@ -1833,10 +1847,16 @@ onMounted(() => {
 .vsc-completion-item:hover {
   background: #094771;
   color: #ffffff;
+  transform: none !important;
+}
+
+.vsc-completion-item:active {
+  transform: none !important;
 }
 
 .vsc-completion-item.is-custom.selected {
   background: #0c4a6e;
+  transform: none !important;
 }
 
 .completion-main {
