@@ -114,6 +114,7 @@ const showServerBusyHint = ref(false)
 let serverBusyTimer: ReturnType<typeof setTimeout> | null = null
 const aiQueueMessage = ref('')
 const aiResult = ref<AiVerificationResult | null>(null)
+let verificationToken = 0
 
 // AI 驗證多步驟狀態機
 const aiVerificationSteps = [
@@ -383,8 +384,21 @@ async function loadCurrentLessonSubmissions() {
 }
 
 watch(selectedLessonId, async () => {
+  verificationToken += 1
   aiResult.value = null
   aiQueueMessage.value = ''
+  submissionMessage.value = ''
+  isAiVerifying.value = false
+  showServerBusyHint.value = false
+  currentAiStepIndex.value = 0
+  if (aiStepTimer) {
+    clearInterval(aiStepTimer)
+    aiStepTimer = null
+  }
+  if (serverBusyTimer) {
+    clearTimeout(serverBusyTimer)
+    serverBusyTimer = null
+  }
   if (lesson.value?.practice) {
     const draft = loadDraftForLesson(lesson.value.id)
     if (draft) {
@@ -483,6 +497,9 @@ async function runAiVerification() {
     return
   }
 
+  const verificationId = ++verificationToken
+  const verificationLessonId = lesson.value.id
+
   // 鎖定保存使用者目前的程式碼快照，確保驗證中與驗證完成後絕不重設 textarea 內容
   const currentCodeSnapshot = {
     html: code.value.html,
@@ -530,10 +547,13 @@ async function runAiVerification() {
         onlineDurationMinutes: Math.max(1, Math.floor(onlineDurationSeconds.value / 60)),
       },
       (queueMsg) => {
-        aiQueueMessage.value = queueMsg
+        if (verificationId === verificationToken && selectedLessonId.value === verificationLessonId) {
+          aiQueueMessage.value = queueMsg
+        }
       },
     )
 
+    if (verificationId !== verificationToken || selectedLessonId.value !== verificationLessonId) return
     aiResult.value = result
 
     // 無論得分多少（即使 0 分），均標記其有通過/完成這一課，並記錄最高分
@@ -558,6 +578,8 @@ async function runAiVerification() {
   } catch (error: any) {
     console.error('驗證失敗：', error)
   } finally {
+    if (verificationId !== verificationToken || selectedLessonId.value !== verificationLessonId) return
+
     // 確保 textarea 內容維持使用者撰寫的最新代碼，方便使用者繼續修改，不必從頭再寫
     code.value = {
       html: currentCodeSnapshot.html,
