@@ -61,6 +61,7 @@ const ai = new GoogleGenAI({
 })
 
 export interface VerificationRequest {
+  codeLanguage?: 'html' | 'sql'
   lessonTitle: string
   lessonObjective?: string
   instructions: string
@@ -71,7 +72,7 @@ export interface VerificationRequest {
 }
 
 export interface VerificationErrorItem {
-  panel: 'html' | 'css' | 'js'
+  panel: 'html' | 'css' | 'js' | 'sql'
   line?: number
   message: string
   suggestion?: string
@@ -188,7 +189,10 @@ export const aiQueue = new GeminiQueue()
  * 直接調用 Vertex AI Gemini 評估代碼
  */
 async function callGeminiVerification(req: VerificationRequest): Promise<VerificationResponse> {
-  const prompt = `你是一位專業、親切且富有同理心的前端程式設計專屬導師。你正在一對一指導學生完成實作練習。
+  const isSql = req.codeLanguage === 'sql'
+  const prompt = `${isSql ? '你是一位熟悉 PostgreSQL 的 SQL 導師。' : '你是一位專業、親切且富有同理心的前端程式設計專屬導師。你正在一對一指導學生完成實作練習。'}
+
+${isSql ? '本題是 PostgreSQL SQL 練習。studentCode.html 欄位內放的是學生撰寫的 SQL 查詢，不是 HTML。只依題目、檢核清單與預期 SQL 評估查詢邏輯、欄位、篩選、分組、JOIN 或 PostgreSQL 語法；不要檢查 HTML/CSS/JavaScript，不要聲稱實際連線或執行查詢。錯誤項目的 panel 一律使用 sql。' : ''}
 
 【重要稱謂與視角規範】：
 所有評語、摘要、錯誤訊息與建議（summary、feedback、errors[].message、errors[].suggestion），主詞必須一律使用「你」（第二人稱），直接對學生說話。絕對不要出現「學生」、「該生」、「學生提交的程式碼」等第三人稱！
@@ -272,7 +276,7 @@ JSON 格式規範：
   "feedback": string,
   "errors": [
     {
-      "panel": "html" | "css" | "js",
+      "panel": ${isSql ? '"sql"' : '"html" | "css" | "js"'},
       "line": number,
       "message": string,
       "suggestion": string

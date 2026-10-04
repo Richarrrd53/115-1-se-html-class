@@ -201,6 +201,7 @@ const server = createServer(async (request, response) => {
       const lessonId = typeof body.lessonId === 'string' ? body.lessonId.trim() : ''
       const lessonTitle = typeof body.lessonTitle === 'string' ? body.lessonTitle.trim() : ''
       const lessonObjective = typeof body.lessonObjective === 'string' ? body.lessonObjective.trim() : ''
+      const codeLanguage = body.codeLanguage === 'sql' ? 'sql' : 'html'
       const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : ''
       const checklist = Array.isArray(body.checklist) ? (body.checklist as string[]) : []
       const starterCode = (body.starterCode as any) || {}
@@ -217,6 +218,7 @@ const server = createServer(async (request, response) => {
 
       // 調用 AI 佇列審核
       const result = await aiQueue.enqueue({
+        codeLanguage,
         lessonTitle: lessonTitle || `單元 ${lessonId}`,
         lessonObjective,
         instructions,
@@ -226,25 +228,25 @@ const server = createServer(async (request, response) => {
         studentCode,
       })
 
-      // 若通過或評分成功，嘗試寫入資料庫
+      // SQL 查詢不會執行；AI 評分結果仍會寫入既有成績紀錄。
       try {
-        await pool.query(`
-          ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS score INT DEFAULT 0;
-          ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
-        `)
-        await pool.query(
-          `INSERT INTO practice_submissions (student_id, student_name, lesson_id, code, completed, score, ai_feedback)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            studentId,
-            studentName,
-            lessonId,
-            JSON.stringify(studentCode),
-            result.passed,
-            result.score,
-            result.feedback || result.summary,
-          ],
-        )
+          await pool.query(`
+            ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS score INT DEFAULT 0;
+            ALTER TABLE practice_submissions ADD COLUMN IF NOT EXISTS ai_feedback TEXT;
+          `)
+          await pool.query(
+            `INSERT INTO practice_submissions (student_id, student_name, lesson_id, code, completed, score, ai_feedback)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              studentId,
+              studentName,
+              lessonId,
+              JSON.stringify(studentCode),
+              result.passed,
+              result.score,
+              result.feedback || result.summary,
+            ],
+          )
       } catch (dbErr) {
         console.warn('寫入 practice_submissions 資料庫失敗（非致命，前端會同步寫入 Supabase）：', dbErr)
       }

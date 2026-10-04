@@ -428,6 +428,49 @@
   flex-direction: column;
   gap: 10px;
 }
+
+.content-course-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.content-course-picker .input-control {
+  min-width: 190px;
+}
+
+.sql-admin-unit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sql-admin-point {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+
+.sql-admin-point > :not(.sql-admin-point-remove) {
+  grid-column: 1;
+}
+
+.sql-admin-point-remove {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.sql-admin-error {
+  display: block;
+  margin-top: 6px;
+  color: var(--red-500);
+}
 .stage-pill-group {
   display: flex;
   flex-direction: column;
@@ -794,6 +837,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.grades-course-filter {
+  width: auto;
+  min-width: 170px;
+  flex: 0 0 auto;
 }
 
 .search-box {

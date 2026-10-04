@@ -7,7 +7,7 @@ export interface AiVerificationResult {
   summary: string
   feedback: string
   errors: Array<{
-    panel: 'html' | 'css' | 'js'
+    panel: 'html' | 'css' | 'js' | 'sql'
     line?: number
     message: string
     suggestion?: string
@@ -18,6 +18,7 @@ export interface AiVerificationResult {
 }
 
 export interface VerifyPracticePayload {
+  codeLanguage?: 'html' | 'sql'
   studentId: string
   studentName: string
   lessonId: string
@@ -92,6 +93,13 @@ export async function verifyPracticeWithAI(
   }
 }
 
+export async function verifySqlPracticeWithAI(
+  payload: VerifyPracticePayload,
+  onQueueAlert?: (msg: string) => void,
+): Promise<AiVerificationResult> {
+  return verifyPracticeWithAI({ ...payload, codeLanguage: 'sql' }, onQueueAlert)
+}
+
 /**
  * 前端智慧語意與語法評核引擎 (Client-side Semantic & Syntax Evaluator)
  * 深度分析學生的 HTML/CSS/JS 代碼結構、Checklist 達成狀態、標籤閉合度與題目要求，
@@ -100,6 +108,9 @@ export async function verifyPracticeWithAI(
 async function fallbackLocalEvaluate(
   payload: VerifyPracticePayload,
 ): Promise<AiVerificationResult> {
+  if (payload.codeLanguage === 'sql') {
+    return fallbackSqlEvaluate(payload)
+  }
   const { studentCode, starterCode, checklist = [] } = payload
   const html = studentCode.html || ''
   const css = studentCode.css || ''
@@ -310,6 +321,57 @@ async function fallbackLocalEvaluate(
   // 自動寫入 Supabase 資料庫保存進度與分數
   await recordSubmissionToSupabase(payload, result)
 
+  return result
+}
+
+async function fallbackSqlEvaluate(payload: VerifyPracticePayload): Promise<AiVerificationResult> {
+  const sql = payload.studentCode.html.trim()
+  const checklist = payload.checklist || []
+  const normalized = sql.toLowerCase().replace(/\s+/g, ' ')
+  const checks = checklist.map((text) => {
+    const item = text.toLowerCase()
+    let passed: boolean | null = null
+    if (item.includes('select')) passed = /\bselect\b/i.test(sql)
+    if (item.includes('where') || item.includes('篩選')) passed = /\bwhere\b/i.test(sql)
+    if (item.includes('group by') || item.includes('分組')) passed = /\bgroup\s+by\b/i.test(sql)
+    if (item.includes('having') || item.includes('群組條件')) passed = /\bhaving\b/i.test(sql)
+    if (item.includes('join') || item.includes('連接')) {
+      const expectedKeys = ['stuid', 'cid'].filter((key) => item.includes(key))
+      passed = /\bjoin\b/i.test(sql) && /\bon\b/i.test(sql) && expectedKeys.every((key) => normalized.includes(key))
+    }
+    if (item.includes('with') || item.includes('cte')) passed = /\bwith\b/i.test(sql) && /\bas\b/i.test(sql)
+    if (item.includes('avg(') || item.includes('計算 avg')) passed = /\bavg\s*\(/i.test(sql)
+    if (item.includes('date_part')) passed = /date_part\s*\(/i.test(sql) && /'year'|"year"/i.test(sql)
+    if (item.includes('integer') || item.includes('型別轉換')) passed = /::\s*integer\b/i.test(sql) || /cast\s*\([\s\S]*?\bas\s+integer\s*\)/i.test(sql)
+    if (item.includes('birth_year')) passed = /\bas\s+birth_year\b/i.test(sql)
+    if (item.includes('資料來源')) {
+      const tableName = item.match(/\b(student|enroll|course)\b/)?.[1]
+      if (tableName) passed = new RegExp('\\bfrom\\s+' + tableName + '\\b', 'i').test(sql) || passed === true
+    }
+    if (passed === null) {
+      const terms = item.match(/[a-z_][a-z0-9_]*/g)?.filter((term) => !['use', 'using', 'select', 'from', 'with', 'into', 'the', 'as'].includes(term)) || []
+      passed = terms.length > 0 && terms.some((term) => normalized.includes(term))
+    }
+    return { text, passed: Boolean(passed) }
+  })
+  const passedCount = checks.filter((item) => item.passed).length
+  const score = sql.length === 0 ? 0 : Math.round((passedCount / Math.max(checks.length, 1)) * 100)
+  const passed = score >= 60
+  const errors = checks.filter((item) => !item.passed).map((item) => ({
+    panel: 'sql' as const,
+    message: '尚未符合「' + item.text + '」',
+    suggestion: '對照題目條件檢查 SQL 子句與欄位關聯。',
+  }))
+  const result: AiVerificationResult = {
+    success: true,
+    passed,
+    score,
+    summary: sql.length === 0 ? '目前沒有 SQL 程式碼。' : passed ? '你已完成大部分查詢要求。' : '還有幾個查詢條件需要補上。',
+    feedback: '這是前端的語法要點檢查，並未連接資料庫執行查詢。AI 服務可用時，還會依題意評估查詢邏輯。',
+    errors,
+    checklistStatus: checks,
+  }
+  await recordSubmissionToSupabase(payload, result)
   return result
 }
 

@@ -25,6 +25,14 @@ import { COURSE_MEMBERS } from './courseMembers'
 import { supabase } from './supabase'
 import MathCurveLoader from './components/MathCurveLoader.vue'
 import TaChatDrawer from './components/TaChatDrawer.vue'
+import {
+  sqlLessons,
+  saveSqlCourseData,
+  resetSqlCourseData,
+  saveSqlCourseDataToDatabase,
+  syncSqlCourseDataFromDatabase,
+  type SqlUnit,
+} from './sqlCourseStore'
 
 const baseUrl = import.meta.env.BASE_URL
 const isTaChatOpen = ref(false)
@@ -143,6 +151,8 @@ export interface StudentAdminRecord {
 }
 
 const currentViewMode = ref<'lessons' | 'grades'>('lessons')
+const selectedContentCourse = ref<'html' | 'sql'>('html')
+const gradeCourseFilter = ref<'html' | 'sql'>('html')
 const studentsList = ref<StudentAdminRecord[]>([])
 const isLoadingStudents = ref(false)
 const studentSearchKeyword = ref('')
@@ -208,11 +218,32 @@ const activeStudentsCount = computed(() => {
   return studentsList.value.filter((s) => s.lastSeenAt || s.onlineDurationMinutes > 0).length
 })
 
+const gradeLessons = computed(() => gradeCourseFilter.value === 'html'
+  ? lessons.value
+  : sqlLessons.value
+    .filter((unit) => unit.hasExercise !== false)
+    .map((unit) => ({ ...unit, id: `sql-${unit.id}` })))
+
+function getStudentCourseScores(student: StudentAdminRecord, units = gradeLessons.value): number[] {
+  return units
+    .map((unit) => student.scores[unit.id])
+    .filter((score): score is number => typeof score === 'number' && Number.isFinite(score))
+}
+
+function getStudentCourseAverage(student: StudentAdminRecord): number {
+  const scores = getStudentCourseScores(student)
+  return scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0
+}
+
+function getStudentCourseCompletedCount(student: StudentAdminRecord): number {
+  return gradeLessons.value.filter((unit) => student.completedLessons[unit.id] || (student.scores[unit.id] ?? 0) >= 80).length
+}
+
 const overallAverageScore = computed(() => {
-  const scored = studentsList.value.filter((s) => s.averageScore > 0)
-  if (!scored.length) return 0
-  const total = scored.reduce((sum, s) => sum + s.averageScore, 0)
-  return Math.round(total / scored.length)
+  const averages = studentsList.value
+    .map((student) => getStudentCourseAverage(student))
+    .filter((average) => average > 0)
+  return averages.length ? Math.round(averages.reduce((sum, average) => sum + average, 0) / averages.length) : 0
 })
 
 async function loadStudentsData(force: boolean | Event = false) {
@@ -465,18 +496,19 @@ function closeStudentDetail() {
 }
 
 function exportStudentsCsv() {
-  const headers = ['學號', '姓名', '最近上線時間', '累積上線時長(分鐘)', '已完成單元數', '平均成績']
-  const lessonIds = lessons.value.map((l) => l.id)
+  const headers = ['課程', '學號', '姓名', '最近上線時間', '累積上線時長(分鐘)', '已完成單元數', '平均成績']
+  const lessonIds = gradeLessons.value.map((unit) => unit.id)
   lessonIds.forEach((id) => headers.push(`單元${id}成績`))
 
   const rows = studentsList.value.map((st) => {
     const row = [
+      gradeCourseFilter.value.toUpperCase(),
       `"${st.studentId}"`,
       `"${st.name}"`,
       `"${st.lastSeenAt ? new Date(st.lastSeenAt).toLocaleString() : '未上線'}"`,
       st.onlineDurationMinutes,
-      st.completedCount,
-      st.averageScore,
+      getStudentCourseCompletedCount(st),
+      getStudentCourseAverage(st),
     ]
     lessonIds.forEach((id) => row.push(st.scores[id] ?? 0))
     return row.join(',')
@@ -487,7 +519,7 @@ function exportStudentsCsv() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `WebCraft_學生修課成績單_${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `WebCraft_${gradeCourseFilter.value.toUpperCase()}_學生修課成績單_${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -495,6 +527,7 @@ function exportStudentsCsv() {
 
 // 當前選取的單元 ID
 const selectedLessonId = ref<string>(lessons.value[0]?.id || '')
+const selectedSqlLessonId = ref<string>(sqlLessons.value[0]?.id || '')
 
 // 預防初始化為空時的 fallback
 watch(
@@ -510,6 +543,64 @@ watch(
 const currentLesson = computed(() => {
   return lessons.value.find((l) => l.id === selectedLessonId.value) || lessons.value[0]
 })
+const currentSqlLesson = computed(() => sqlLessons.value.find((unit) => unit.id === selectedSqlLessonId.value) || sqlLessons.value[0])
+const sqlRowsJson = ref('')
+const sqlRowsJsonError = ref('')
+const sqlColumnsText = computed({
+  get: () => currentSqlLesson.value?.columns.join(', ') || '',
+  set: (value: string) => {
+    if (currentSqlLesson.value) {
+      currentSqlLesson.value.columns = value.split(',').map((column) => column.trim()).filter(Boolean)
+    }
+  },
+})
+const sqlChecklistText = computed({
+  get: () => currentSqlLesson.value?.checklist.join('\n') || '',
+  set: (value: string) => {
+    if (currentSqlLesson.value) {
+      currentSqlLesson.value.checklist = value.split('\n').map((item) => item.trim()).filter(Boolean)
+    }
+  },
+})
+
+watch(currentSqlLesson, (unit) => {
+  sqlRowsJson.value = JSON.stringify(unit?.rows || [], null, 2)
+  sqlRowsJsonError.value = ''
+}, { immediate: true })
+
+function applySqlRowsJson() {
+  if (!currentSqlLesson.value) return
+  try {
+    const parsed = JSON.parse(sqlRowsJson.value)
+    if (!Array.isArray(parsed) || parsed.some((row) => !Array.isArray(row))) {
+      throw new Error('資料列需為二維陣列。')
+    }
+    currentSqlLesson.value.rows = parsed.map((row: unknown[]) => row.map((value) => String(value)))
+    sqlRowsJsonError.value = ''
+  } catch (error: any) {
+    sqlRowsJsonError.value = error?.message || '請輸入有效的 JSON 二維陣列。'
+  }
+}
+
+function addSqlReviewPoint() {
+  if (!currentSqlLesson.value) return
+  currentSqlLesson.value.reviewPoints ||= []
+  currentSqlLesson.value.reviewPoints.push({ title: '新觀念', body: '輸入觀念說明。', example: 'SELECT ...' })
+}
+
+function removeSqlReviewPoint(index: number) {
+  currentSqlLesson.value?.reviewPoints?.splice(index, 1)
+}
+
+watch(
+  sqlLessons,
+  (list) => {
+    if (!list.some((unit) => unit.id === selectedSqlLessonId.value) && list.length > 0) {
+      selectedSqlLessonId.value = list[0].id
+    }
+  },
+  { immediate: true },
+)
 
 // Tab 切換 (練習碼與參考答案)
 const starterTab = ref<'html' | 'css' | 'js'>('html')
@@ -535,11 +626,14 @@ const courseSaveStatus = ref('')
 
 async function handleSaveCourseToDb() {
   courseSaveStatus.value = '正在儲存教材至雲端資料庫...'
-  const res = await saveCourseDataToDatabase()
-  if (res.success) {
-    courseSaveStatus.value = '教材已成功儲存至雲端資料庫！全班學生重新整理即可載入。'
+  const [htmlResult, sqlResult] = await Promise.all([
+    saveCourseDataToDatabase(),
+    saveSqlCourseDataToDatabase(),
+  ])
+  if (htmlResult.success && sqlResult.success) {
+    courseSaveStatus.value = 'HTML 與 SQL 教材已同步儲存至雲端！全班學生重新整理即可載入。'
   } else {
-    courseSaveStatus.value = res.message
+    courseSaveStatus.value = [htmlResult.message, sqlResult.message].filter((_, index) => index === 0 ? !htmlResult.success : !sqlResult.success).join('；')
   }
   setTimeout(() => {
     courseSaveStatus.value = ''
@@ -548,9 +642,12 @@ async function handleSaveCourseToDb() {
 
 async function handleReloadCourseFromDb() {
   courseSaveStatus.value = '正在從雲端資料庫讀取最新教材...'
-  const ok = await syncCourseDataFromDatabase()
-  if (ok) {
-    courseSaveStatus.value = '已成功從雲端資料庫更新最新教材！'
+  const [htmlOk, sqlOk] = await Promise.all([
+    syncCourseDataFromDatabase(),
+    syncSqlCourseDataFromDatabase(),
+  ])
+  if (htmlOk || sqlOk) {
+    courseSaveStatus.value = '已從雲端更新教材' + [htmlOk ? ' HTML' : '', sqlOk ? ' SQL' : ''].join('') + '！'
   } else {
     courseSaveStatus.value = '目前無法自雲端取得更新，已保持本機內容。'
   }
@@ -564,9 +661,10 @@ const autoRefreshPreview = ref(false)
 
 // 監聽目前編輯的內容，儲存至本機 localStorage；若開啟自動刷新則即時同步至 iframe
 watch(
-  [stages, lessons],
+  [stages, lessons, sqlLessons],
   () => {
     saveCourseData()
+    saveSqlCourseData()
     if (autoRefreshPreview.value) {
       syncToIframe()
     }
@@ -616,10 +714,44 @@ function reloadPreview() {
 
 // ================== 單元操作 ==================
 function handleAddLesson() {
+  if (selectedContentCourse.value === 'sql') {
+    const nextNumber = sqlLessons.value.reduce((max, unit) => Math.max(max, unit.number || 0), 0) + 1
+    const newUnit: SqlUnit = {
+      id: 'sql-unit-' + Date.now(),
+      number: nextNumber,
+      title: '新的 SQL 單元',
+      objective: '輸入此單元的學習目標。',
+      concept: '輸入要複習的 SQL 觀念。',
+      tableName: 'student（學生資料）',
+      columns: ['id', 'name'],
+      rows: [['S001', '範例同學']],
+      question: '輸入練習題目。',
+      starter: 'SELECT *\\nFROM student;',
+      answer: 'SELECT id, name\\nFROM student;',
+      checklist: ['使用 SELECT 查詢資料'],
+    }
+    sqlLessons.value.push(newUnit)
+    selectedSqlLessonId.value = newUnit.id
+    return
+  }
   const currentStage = currentLesson.value?.stage || stages.value[0]?.id || 1
   const newL = createEmptyLesson(currentStage)
   addLesson(newL)
   selectedLessonId.value = newL.id
+}
+
+function handleDeleteSqlLesson(unit: SqlUnit) {
+  if (unit.hasExercise === false) {
+    alert('「總複習」單元不可刪除。')
+    return
+  }
+  if (sqlLessons.value.filter((item) => item.hasExercise !== false).length <= 1) {
+    alert('SQL 課程至少需要保留一個練習單元！')
+    return
+  }
+  if (!confirm('確定要刪除「' + unit.title + '」嗎？')) return
+  sqlLessons.value = sqlLessons.value.filter((item) => item.id !== unit.id)
+  selectedSqlLessonId.value = sqlLessons.value[0]?.id || ''
 }
 
 function handleDeleteLesson(lesson: Lesson) {
@@ -736,6 +868,7 @@ function handleImportTs(event: Event) {
 function handleResetDefault() {
   if (confirm('確定要還原成專案的預設教材內容嗎？此操作將覆蓋目前的編輯內容！')) {
     resetToDefault()
+    resetSqlCourseData()
     if (lessons.value.length > 0) {
       selectedLessonId.value = lessons.value[0].id
     }
@@ -835,7 +968,7 @@ function handleResetDefault() {
 
       <div class="editor-header-actions">
         <template v-if="currentViewMode === 'lessons'">
-          <button class="btn btn-outline" @click="showStageModal = true" title="階段管理">
+          <button v-if="selectedContentCourse === 'html'" class="btn btn-outline" @click="showStageModal = true" title="階段管理">
             <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
               <polyline points="2 17 12 22 22 17"></polyline>
@@ -844,12 +977,12 @@ function handleResetDefault() {
             <span class="btn-text-full">階段管理 ({{ stages.length }})</span>
             <span class="btn-text-short">階段 ({{ stages.length }})</span>
           </button>
-          <button class="btn btn-primary" @click="handleAddLesson" title="新增單元">
+          <button class="btn btn-primary" @click="handleAddLesson" :title="selectedContentCourse === 'html' ? '新增 HTML 單元' : '新增 SQL 單元'">
             <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            新增單元
+            {{ selectedContentCourse === 'html' ? '新增單元' : '新增 SQL 單元' }}
           </button>
 
           <button class="btn btn-primary" :disabled="isSyncingCourseData" @click="handleSaveCourseToDb" title="將所有課程教材同步儲存至雲端資料庫，跨裝置與全班即刻生效">
@@ -1020,13 +1153,19 @@ function handleResetDefault() {
         <!-- 單元快捷導航欄 -->
         <div class="lessons-nav-bar">
           <div class="nav-bar-header">
-            <span>單元列表 (共 {{ lessons.length }} 單元)</span>
+            <label class="content-course-picker">
+              <span>教材單元</span>
+              <select v-model="selectedContentCourse" class="input-control">
+                <option value="html">HTML 單元列表（{{ lessons.length }}）</option>
+                <option value="sql">SQL 單元列表（{{ sqlLessons.length }}）</option>
+              </select>
+            </label>
             <button class="btn-text-sm" @click="sidebarCollapsed = !sidebarCollapsed">
               {{ sidebarCollapsed ? '展開列表 ▾' : '收合列表 ▴' }}
             </button>
           </div>
 
-          <div v-show="!sidebarCollapsed" class="nav-pills-container">
+          <div v-if="selectedContentCourse === 'html'" v-show="!sidebarCollapsed" class="nav-pills-container">
             <div
               v-for="s in stages"
               :key="s.id"
@@ -1047,10 +1186,23 @@ function handleResetDefault() {
               </div>
             </div>
           </div>
+          <div v-else v-show="!sidebarCollapsed" class="nav-pills-container sql-admin-unit-list">
+            <button
+              v-for="(unit, index) in sqlLessons"
+              :key="unit.id"
+              type="button"
+              class="nav-lesson-pill"
+              :class="{ active: unit.id === selectedSqlLessonId }"
+              @click="selectedSqlLessonId = unit.id"
+            >
+              <span class="pill-num">{{ index + 1 }}</span>
+              <span class="pill-title">{{ unit.title }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- 單元詳細編輯表單 -->
-        <div v-if="currentLesson" class="form-container">
+        <div v-if="selectedContentCourse === 'html' && currentLesson" class="form-container">
           <!-- 卡片 1: 基本資訊 (Topics) -->
           <div class="editor-card">
             <div class="card-title-row">
@@ -1378,8 +1530,122 @@ function handleResetDefault() {
         </div>
       </section>
 
+      <div v-if="selectedContentCourse === 'sql' && currentSqlLesson" class="form-container">
+        <div class="editor-card">
+          <div class="card-title-row">
+            <div class="card-title">
+              <span class="card-badge">POSTGRESQL</span>
+              <h3>SQL 單元內容</h3>
+            </div>
+            <button
+              v-if="currentSqlLesson.hasExercise !== false"
+              class="btn-delete"
+              title="刪除此 SQL 單元"
+              @click="handleDeleteSqlLesson(currentSqlLesson)"
+            >
+              🗑️ 刪除單元
+            </button>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label>單元標題</label>
+              <input v-model="currentSqlLesson.title" class="input-control font-bold" />
+            </div>
+            <div class="form-field">
+              <label>單元類型</label>
+              <input :value="currentSqlLesson.hasExercise === false ? '觀念總複習' : 'SQL 練習'" class="input-control" disabled />
+            </div>
+          </div>
+          <div class="form-field">
+            <label>學習目標</label>
+            <textarea v-model="currentSqlLesson.objective" rows="2" class="input-control"></textarea>
+          </div>
+          <div class="form-field">
+            <label>單元標題下方的複習觀念</label>
+            <textarea v-model="currentSqlLesson.concept" rows="3" class="input-control"></textarea>
+          </div>
+        </div>
+
+        <div v-if="currentSqlLesson.hasExercise === false" class="editor-card">
+          <div class="card-title-row">
+            <div class="card-title">
+              <span class="card-badge">REVIEW POINTS</span>
+              <h3>總複習觀念卡片</h3>
+            </div>
+            <button class="btn-text-sm" @click="addSqlReviewPoint">➕ 新增觀念卡</button>
+          </div>
+          <div v-for="(point, index) in currentSqlLesson.reviewPoints" :key="index" class="sql-admin-point">
+            <div class="form-grid-2">
+              <div class="form-field">
+                <label>標題</label>
+                <input v-model="point.title" class="input-control" />
+              </div>
+              <button class="btn-icon-danger sql-admin-point-remove" title="刪除此觀念卡" @click="removeSqlReviewPoint(index)">✕</button>
+            </div>
+            <div class="form-field">
+              <label>觀念說明</label>
+              <textarea v-model="point.body" rows="2" class="input-control"></textarea>
+            </div>
+            <div class="form-field">
+              <label>SQL 範例</label>
+              <textarea v-model="point.example" rows="5" class="input-control code-editor" spellcheck="false"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <template v-else>
+          <div class="editor-card">
+            <div class="card-title-row">
+              <div class="card-title">
+                <span class="card-badge">SIMULATED DATA</span>
+                <h3>題目情境資料</h3>
+              </div>
+            </div>
+            <div class="form-field">
+              <label>資料表名稱與說明</label>
+              <input v-model="currentSqlLesson.tableName" class="input-control" />
+            </div>
+            <div class="form-field">
+              <label>欄位名稱（以逗號分隔）</label>
+              <input v-model="sqlColumnsText" class="input-control" placeholder="例如：stuid, name, grade" />
+            </div>
+            <div class="form-field">
+              <label>示意資料列（JSON 二維陣列）</label>
+              <textarea v-model="sqlRowsJson" rows="7" class="input-control code-editor" spellcheck="false" @blur="applySqlRowsJson"></textarea>
+              <small v-if="sqlRowsJsonError" class="sql-admin-error">{{ sqlRowsJsonError }}</small>
+              <small v-else class="md-hint">每一列依欄位順序輸入，例如 [["S001", "小明", "90"]]</small>
+            </div>
+            <div class="form-field">
+              <label>練習題目</label>
+              <textarea v-model="currentSqlLesson.question" rows="3" class="input-control"></textarea>
+            </div>
+          </div>
+
+          <div class="editor-card">
+            <div class="card-title-row">
+              <div class="card-title">
+                <span class="card-badge">SQL PRACTICE</span>
+                <h3>練習起始程式碼與參考答案</h3>
+              </div>
+            </div>
+            <div class="form-field">
+              <label>學生練習起始內容</label>
+              <textarea v-model="currentSqlLesson.starter" rows="9" class="input-control code-editor" spellcheck="false"></textarea>
+            </div>
+            <div class="form-field">
+              <label>參考答案</label>
+              <textarea v-model="currentSqlLesson.answer" rows="9" class="input-control code-editor" spellcheck="false"></textarea>
+            </div>
+            <div class="form-field">
+              <label>AI 檢查清單（每行一項）</label>
+              <textarea v-model="sqlChecklistText" rows="5" class="input-control"></textarea>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <!-- 右欄：即時預覽 index.html -->
-      <section class="editor-right-pane">
+      <section v-if="selectedContentCourse === 'html'" class="editor-right-pane">
         <div class="preview-header-bar">
           <div class="preview-title-tag">
             <span class="live-dot" :class="{ off: !autoRefreshPreview }"></span>
@@ -1455,11 +1721,15 @@ function handleResetDefault() {
           </div>
           <div class="metric-card">
             <span class="metric-label">課程總單元數</span>
-            <strong class="metric-value">{{ lessons.length }} 單元</strong>
+            <strong class="metric-value">{{ gradeLessons.length }} 單元</strong>
           </div>
         </div>
 
         <div class="grades-filter-bar">
+          <select v-model="gradeCourseFilter" class="input-control grades-course-filter" aria-label="選擇成績課程">
+            <option value="html">HTML 練習成績</option>
+            <option value="sql">SQL 練習成績</option>
+          </select>
           <div class="search-box">
             <span class="search-icon">🔍</span>
             <input
@@ -1542,12 +1812,12 @@ function handleResetDefault() {
               </td>
               <td>
                 <span class="progress-badge">
-                  {{ st.completedCount }} / {{ lessons.length }}
+                  {{ getStudentCourseCompletedCount(st) }} / {{ gradeLessons.length }}
                 </span>
               </td>
               <td>
-                <strong class="score-text" :class="{ 'score-high': st.averageScore >= 80, 'score-low': st.averageScore < 60 && st.averageScore > 0 }">
-                  {{ st.averageScore > 0 ? `${st.averageScore} 分` : '—' }}
+                <strong class="score-text" :class="{ 'score-high': getStudentCourseAverage(st) >= 80, 'score-low': getStudentCourseAverage(st) < 60 && getStudentCourseAverage(st) > 0 }">
+                  {{ getStudentCourseAverage(st) > 0 ? `${getStudentCourseAverage(st)} 分` : '—' }}
                 </strong>
               </td>
               <td>
@@ -1556,17 +1826,17 @@ function handleResetDefault() {
                   <table class="unit-scores-table">
                     <thead>
                       <tr>
-                        <th v-for="l in lessons" :key="l.id" :title="l.title">
-                          {{ l.number }}
+                        <th v-for="(l, index) in gradeLessons" :key="l.id" :title="l.title">
+                          {{ l.number ?? index + 1 }}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
                         <td
-                          v-for="l in lessons"
+                          v-for="l in gradeLessons"
                           :key="l.id"
-                          :title="`${l.title} (單元 ${l.number}): ${st.scores[l.id] !== undefined && st.scores[l.id] !== null ? st.scores[l.id] + ' 分' : '未評分'}`"
+                          :title="`${l.title} (單元 ${l.number ?? gradeLessons.findIndex((unit) => unit.id === l.id) + 1}): ${st.scores[l.id] !== undefined && st.scores[l.id] !== null ? st.scores[l.id] + ' 分' : '未評分'}`"
                         >
                           <span
                             class="unit-score-pill"
@@ -1604,13 +1874,13 @@ function handleResetDefault() {
             <div class="detail-overview-bar">
               <span>累積上線時長：<strong>{{ selectedDetailStudent.onlineDurationMinutes }} 分鐘</strong></span>
               <span>最近活躍：<strong>{{ formatDate(selectedDetailStudent.lastSeenAt) }}</strong></span>
-              <span>已完成題數：<strong>{{ selectedDetailStudent.completedCount }} / {{ lessons.length }}</strong></span>
+              <span>已完成題數：<strong>{{ getStudentCourseCompletedCount(selectedDetailStudent) }} / {{ gradeLessons.length }}</strong></span>
             </div>
 
             <div class="detail-lessons-list">
-              <div v-for="l in lessons" :key="l.id" class="detail-lesson-row">
+              <div v-for="(l, index) in gradeLessons" :key="l.id" class="detail-lesson-row">
                 <div class="detail-lesson-title">
-                  <span class="lesson-badge">單元 {{ l.number }}</span>
+                  <span class="lesson-badge">單元 {{ l.number ?? index + 1 }}</span>
                   <strong>{{ l.title }}</strong>
                 </div>
                 <div class="detail-lesson-inputs">

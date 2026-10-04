@@ -33,6 +33,11 @@ body {
   overflow: hidden;
 }
 
+body.sql-page {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 button, textarea, input, select {
   font-family: inherit;
   font-size: inherit;
@@ -160,6 +165,225 @@ pre code {
   position: sticky;
   top: 0;
   z-index: 50;
+}
+
+.course-switcher {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .58);
+  flex-shrink: 0;
+}
+
+.course-switcher button {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: #64748b;
+  background: transparent;
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+
+.course-switcher button.active {
+  color: #3730a3;
+  background: #eef0ff;
+  box-shadow: 0 2px 8px rgba(49, 73, 216, .1);
+}
+
+.sql-review {
+  width: min(1120px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 42px 0 64px;
+}
+
+.sql-review-heading {
+  margin: 0 0 24px;
+}
+
+.sql-review-heading h1 {
+  margin: 8px 0;
+  color: #172554;
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+}
+
+.sql-review-heading p,
+.sql-review-card p {
+  color: #64748b;
+  line-height: 1.65;
+}
+
+.sql-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sql-review-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, .2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .04);
+}
+
+.sql-review-card h2 {
+  margin: 0 0 8px;
+  color: #1e293b;
+  font-size: 1.05rem;
+}
+
+.sql-review-card p {
+  margin: 0 0 14px;
+  font-size: .92rem;
+}
+
+.sql-review-card pre {
+  margin: 12px 0 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 10px;
+  color: #dbeafe;
+  background: #172033;
+  font: 500 .82rem/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 2;
+}
+
+.sql-review-card ul {
+  margin: 12px 0 0;
+  padding-left: 1.25rem;
+  color: #475569;
+  line-height: 1.9;
+}
+
+.sql-review-card .sql-note {
+  margin: 12px 0 0;
+  color: #92400e;
+}
+
+.sql-practice {
+  margin-top: 42px;
+}
+
+.sql-practice-heading {
+  margin-bottom: 16px;
+}
+
+.sql-practice-heading h2 {
+  margin: 6px 0;
+  color: #172554;
+  font-size: 1.45rem;
+}
+
+.sql-practice-heading p {
+  margin: 0;
+  color: #64748b;
+}
+
+.sql-practice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.sql-practice-item {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, .22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .86);
+}
+
+.sql-practice-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  color: #1e293b;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sql-practice-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.sql-practice-item summary > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sql-practice-item summary b {
+  color: #4f46e5;
+  font: 700 .8rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sql-answer-label {
+  color: #4f46e5;
+  font-size: .84rem;
+  white-space: nowrap;
+}
+
+.sql-practice-item[open] .sql-answer-label {
+  color: #64748b;
+}
+
+.sql-practice-content {
+  padding: 0 18px 18px;
+  border-top: 1px solid rgba(148, 163, 184, .16);
+}
+
+.sql-practice-content p {
+  margin: 14px 0;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.sql-practice-content pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  border-radius: 10px;
+  color: #dbeafe;
+  background: #172033;
+  font: 500 .82rem/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (max-width: 760px) {
+  .sql-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sql-review {
+    width: min(100% - 24px, 560px);
+    padding-top: 28px;
+  }
+
+  .topbar {
+    gap: 8px;
+  }
+
+  .course-switcher button {
+    padding: 8px 9px;
+    font-size: .78rem;
+  }
+
+  .sql-practice-item summary {
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .sql-practice-content {
+    padding: 0 14px 14px;
+  }
 }
 
 .brand {
@@ -375,6 +599,247 @@ pre code {
   margin: 0 auto;
   position: relative;
   min-height: calc(100vh - 70px);
+}
+
+.sql-workspace {
+  align-items: flex-start;
+}
+
+.sql-content {
+  max-height: none;
+  min-height: calc(100vh - 70px);
+  overflow: visible;
+}
+
+.sql-unit-link {
+  width: 100%;
+  text-align: left;
+}
+
+.sql-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 32px;
+}
+
+.sql-overview-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, .18);
+  border-radius: 18px;
+  background: var(--indigo-50);
+}
+
+.sql-overview-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+}
+
+.sql-overview-card p {
+  margin: 0 0 12px;
+  color: #475569;
+  font-size: .9rem;
+  line-height: 1.7;
+}
+
+.sql-overview-card pre {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  border-radius: 10px;
+  color: #dbeafe;
+  background: #172033;
+  font: 500 .78rem/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sql-lesson-heading .sql-unit-concept {
+  max-width: 900px;
+  margin: 8px 0 10px;
+  color: #334155;
+  font-size: 1rem;
+  line-height: 1.8;
+  font-weight: 600;
+}
+
+.sql-lesson-heading .lesson-objective {
+  margin: 0;
+  font-size: .9rem;
+}
+
+.sql-simulated-table-wrap {
+  overflow-x: auto;
+}
+
+.sql-simulated-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #334155;
+  font-size: .9rem;
+  text-align: left;
+}
+
+.sql-simulated-table th,
+.sql-simulated-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  white-space: nowrap;
+}
+
+.sql-simulated-table th {
+  color: #475569;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.sql-simulated-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.sql-simulation-note {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: .82rem;
+}
+
+.sql-challenge-card .challenge-instructions {
+  margin: 12px 0 0;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.sql-editor-wrap {
+  overflow: hidden;
+  border: 1px solid #273449;
+  border-radius: 12px;
+  background: #172033;
+}
+
+.sql-editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  color: #dbeafe;
+  background: #111827;
+  font-size: .82rem;
+}
+
+.sql-editor-toolbar span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sql-editor-toolbar i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #38bdf8;
+}
+
+.sql-editor-toolbar small {
+  color: #94a3b8;
+}
+
+.sql-editor {
+  display: block;
+  width: 100%;
+  min-height: 190px;
+  resize: vertical;
+  padding: 16px;
+  border: 0;
+  outline: 0;
+  color: #dbeafe;
+  background: #172033;
+  font: 500 .88rem/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  tab-size: 2;
+}
+
+.sql-reference-answer {
+  margin-top: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 11px;
+  background: #f8fafc;
+}
+
+.sql-reference-answer summary {
+  padding: 12px 14px;
+  color: #475569;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sql-reference-answer[open] summary {
+  border-bottom: 1px solid #dbe3ef;
+}
+
+.sql-reference-answer pre {
+  margin: 0;
+  padding: 14px;
+  overflow-x: auto;
+  color: #dbeafe;
+  background: #172033;
+  font: 500 .84rem/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.sql-check-error {
+  margin: 14px 0 0;
+  color: #b91c1c;
+}
+
+.sql-check-status,
+.sql-ai-result {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.sql-ai-result.passed {
+  border-color: #bbf7d0;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.sql-ai-result-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sql-ai-result p {
+  margin: 10px 0 0;
+  line-height: 1.65;
+}
+
+.sql-ai-result ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #64748b;
+}
+
+.sql-ai-result li {
+  margin-top: 6px;
+}
+
+.sql-ai-result li.complete {
+  color: #15803d;
+}
+
+@media (max-width: 760px) {
+  .sql-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sql-content {
+    min-height: auto;
+    padding: 26px 16px 48px;
+    border-radius: 28px 0 0 0;
+  }
 }
 
 .sidebar {
