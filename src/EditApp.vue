@@ -1528,9 +1528,7 @@ function handleResetDefault() {
             </div>
           </div>
         </div>
-      </section>
-
-      <div v-if="selectedContentCourse === 'sql' && currentSqlLesson" class="form-container">
+        <div v-if="selectedContentCourse === 'sql' && currentSqlLesson" class="form-container">
         <div class="editor-card">
           <div class="card-title-row">
             <div class="card-title">
@@ -1642,7 +1640,8 @@ function handleResetDefault() {
             </div>
           </div>
         </template>
-      </div>
+        </div>
+      </section>
 
       <!-- 右欄：即時預覽 index.html -->
       <section v-if="selectedContentCourse === 'html'" class="editor-right-pane">
@@ -1699,6 +1698,65 @@ function handleResetDefault() {
             class="live-preview-frame"
             @load="onIframeLoad"
           ></iframe>
+        </div>
+      </section>
+      <section v-else-if="selectedContentCourse === 'sql' && currentSqlLesson" class="editor-right-pane sql-admin-preview-pane">
+        <div class="preview-header-bar">
+          <div class="preview-title-tag">
+            <span class="live-dot"></span>
+            <strong>SQL 教材即時預覽</strong>
+          </div>
+          <div class="preview-controls">
+            <div class="device-switch">
+              <button :class="{ active: previewDevice === 'desktop' }" title="桌面模式" @click="previewDevice = 'desktop'">🖥️ 桌面</button>
+              <button :class="{ active: previewDevice === 'tablet' }" title="平板模式" @click="previewDevice = 'tablet'">📱 平板</button>
+              <button :class="{ active: previewDevice === 'mobile' }" title="手機模式" @click="previewDevice = 'mobile'">📱 手機</button>
+            </div>
+          </div>
+        </div>
+        <div class="iframe-container-wrapper sql-admin-preview-scroll" :class="previewDevice">
+          <article class="sql-admin-preview-canvas" :class="previewDevice">
+            <div class="sql-admin-preview-page">
+              <div class="breadcrumb">SQL 複習 <span>/</span> 單元 {{ sqlLessons.findIndex((unit) => unit.id === currentSqlLesson.id) + 1 }}</div>
+              <header class="lesson-heading sql-lesson-heading">
+                <div>
+                  <div class="eyebrow">CHAPTER {{ String(sqlLessons.findIndex((unit) => unit.id === currentSqlLesson.id) + 1).padStart(2, '0') }} · POSTGRESQL</div>
+                  <h1>{{ currentSqlLesson.title }}</h1>
+                  <p class="sql-unit-concept">{{ currentSqlLesson.concept }}</p>
+                  <p v-if="currentSqlLesson.objective" class="lesson-objective">{{ currentSqlLesson.objective }}</p>
+                </div>
+              </header>
+
+              <section v-if="currentSqlLesson.hasExercise === false" class="sql-overview-grid" aria-label="SQL 基礎觀念">
+                <article v-for="point in currentSqlLesson.reviewPoints" :key="point.title" class="sql-overview-card">
+                  <h2>{{ point.title }}</h2>
+                  <p>{{ point.body }}</p>
+                  <pre><code>{{ point.example }}</code></pre>
+                </article>
+              </section>
+
+              <template v-else>
+                <section class="example-card sql-example-card">
+                  <div class="section-heading"><div><span class="section-kicker">情境資料</span><h2>{{ currentSqlLesson.tableName }}</h2></div><span class="chip">模擬資料</span></div>
+                  <div class="sql-simulated-table-wrap">
+                    <table class="sql-simulated-table">
+                      <thead><tr><th v-for="column in currentSqlLesson.columns" :key="column">{{ column }}</th></tr></thead>
+                      <tbody><tr v-for="(row, rowIndex) in currentSqlLesson.rows" :key="rowIndex"><td v-for="(value, colIndex) in row" :key="colIndex">{{ value }}</td></tr></tbody>
+                    </table>
+                  </div>
+                  <p class="sql-simulation-note">這是題目用的示意資料，不會執行 SQL 或連接資料庫。</p>
+                </section>
+                <section class="challenge-card sql-challenge-card">
+                  <div class="challenge-intro"><div><span class="section-kicker">實作練習</span><h2>動手寫查詢</h2><p class="challenge-instructions">{{ currentSqlLesson.question }}</p></div></div>
+                  <div class="sql-editor-wrap">
+                    <div class="sql-editor-toolbar"><span><i></i> query.sql</span><small>PostgreSQL</small></div>
+                    <pre class="sql-admin-preview-code"><code>{{ currentSqlLesson.starter }}</code></pre>
+                  </div>
+                  <details class="sql-reference-answer"><summary>查看參考答案</summary><pre><code>{{ currentSqlLesson.answer }}</code></pre></details>
+                </section>
+              </template>
+            </div>
+          </article>
         </div>
       </section>
     </div>
