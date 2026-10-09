@@ -1129,6 +1129,24 @@ ${raw}
         <div class="progress-track"><i :style="{ width: `${progress}%` }"></i></div>
         <b>{{ progress }}%</b>
       </div>
+      <div class="course-switcher" aria-label="課程切換">
+        <button
+          type="button"
+          class="ghost-button"
+          :class="{ active: activeCourseView === 'html' }"
+          @click="activeCourseView = 'html'"
+        >
+          HTML 練習
+        </button>
+        <button
+          type="button"
+          class="ghost-button"
+          :class="{ active: activeCourseView === 'sql' }"
+          @click="activeCourseView = 'sql'"
+        >
+          SQL 練習
+        </button>
+      </div>
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">
         <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
