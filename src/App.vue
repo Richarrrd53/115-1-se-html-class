@@ -8,7 +8,6 @@ import { verifyPracticeWithAI, type AiVerificationResult, getTaiwanTimeString } 
 import MathCurveLoader from './components/MathCurveLoader.vue'
 import VsCodeEditor from './components/VsCodeEditor.vue'
 import ContactChat from './components/ContactChat.vue'
-import AnnouncementMorphModal from './components/AnnouncementMorphModal.vue'
 import SqlReview from './components/SqlReview.vue'
 
 const baseUrl = import.meta.env.BASE_URL
@@ -120,11 +119,6 @@ const showServerBusyHint = ref(false)
 let serverBusyTimer: ReturnType<typeof setTimeout> | null = null
 const aiQueueMessage = ref('')
 const aiResult = ref<AiVerificationResult | null>(null)
-type WebEditorError = Extract<AiVerificationResult['errors'][number], { panel: 'html' | 'css' | 'js' }>
-function isWebEditorError(error: AiVerificationResult['errors'][number]): error is WebEditorError {
-  return error.panel !== 'sql'
-}
-const htmlEditorErrors = computed(() => aiResult.value?.errors.filter(isWebEditorError) ?? [])
 let verificationToken = 0
 
 // AI 驗證多步驟狀態機
@@ -1305,7 +1299,10 @@ ${raw}
             <VsCodeEditor
               v-model="code"
               v-model:active-panel="activePanel"
-              :errors="aiResult?.errors || []"
+              :errors="aiResult?.errors.filter(
+                (error): error is Extract<AiVerificationResult['errors'][number], { panel: 'html' | 'css' | 'js' }> =>
+                  error.panel !== 'sql',
+              ) || []"
             />
             <div class="preview-panel">
               <div class="preview-toolbar"><span><i></i> 即時預覽</span><small>輸入程式碼後會立即更新</small></div>
