@@ -58,6 +58,7 @@ function getGoogleGenAI(): GoogleGenAI | null {
 let ai: GoogleGenAI | null = getGoogleGenAI()
 
 function buildPrompt(data: Record<string, any>): string {
+  const isSql = data.codeLanguage === 'sql'
   const checklist: string[] = Array.isArray(data.checklist) ? data.checklist : []
   const sc = data.starterCode || {}
   const ac = data.answerCode || {}
@@ -65,11 +66,12 @@ function buildPrompt(data: Record<string, any>): string {
   const cl = checklist.length ? checklist.map((c: string, i: number) => `${i + 1}. ${c}`).join('\n') : '無指定清單'
   const jsonSpec = JSON.stringify({
     passed: 'boolean', score: 'number', summary: 'string', feedback: 'string',
-    errors: [{ panel: 'html|css|js', line: 'number', message: 'string', suggestion: 'string' }],
+    errors: [{ panel: isSql ? 'sql' : 'html|css|js', line: 'number', message: 'string', suggestion: 'string' }],
     checklistStatus: [{ text: 'string', passed: 'boolean' }],
   })
   return [
-    '你是一位專業、親切且富有同理心的前端程式設計專屬導師。你正在一對一指導學生完成實作練習。',
+    isSql ? '你是一位熟悉 PostgreSQL 的 SQL 導師。' : '你是一位專業、親切且富有同理心的前端程式設計專屬導師。你正在一對一指導學生完成實作練習。',
+    ...(isSql ? ['本題是 PostgreSQL SQL 練習。studentCode.html 欄位內放的是學生撰寫的 SQL 查詢，不是 HTML。只依題目、檢核清單與預期 SQL 評估查詢邏輯、欄位、篩選、分組、JOIN 或 PostgreSQL 語法；不要檢查 HTML/CSS/JavaScript，不要聲稱實際連線或執行查詢。錯誤項目的 panel 一律使用 sql。'] : []),
     '',
     '【重要稱謂與視角規範】：',
     '所有評語、摘要、錯誤訊息與建議（summary、feedback、errors[].message、errors[].suggestion），主詞必須一律使用「你」（第二人稱），直接對學生說話。絕對不要出現「學生」、「該生」、「學生提交的程式碼」等第三人稱！',
@@ -122,6 +124,44 @@ function buildPrompt(data: Record<string, any>): string {
 
 // 智慧服務端語意檢核備援
 function serverSemanticEvaluate(data: Record<string, any>) {
+  if (data.codeLanguage === 'sql') {
+    const sql = String(data.studentCode?.html || '').trim()
+    const normalized = sql.toLowerCase().replace(/\s+/g, ' ')
+    const checklist: string[] = Array.isArray(data.checklist) ? data.checklist : []
+    const checklistStatus = checklist.map((text) => {
+      const item = text.toLowerCase()
+      let passed: boolean | null = null
+      if (item.includes('select')) passed = /\bselect\b/i.test(sql)
+      if (item.includes('where') || item.includes('篩選')) passed = /\bwhere\b/i.test(sql)
+      if (item.includes('group by') || item.includes('分組')) passed = /\bgroup\s+by\b/i.test(sql)
+      if (item.includes('having') || item.includes('群組條件')) passed = /\bhaving\b/i.test(sql)
+      if (item.includes('join') || item.includes('連接')) {
+        const keys = ['stuid', 'cid'].filter((key) => item.includes(key))
+        passed = /\bjoin\b/i.test(sql) && /\bon\b/i.test(sql) && keys.every((key) => normalized.includes(key))
+      }
+      if (item.includes('with') || item.includes('cte')) passed = /\bwith\b/i.test(sql) && /\bas\b/i.test(sql)
+      if (item.includes('avg(') || item.includes('計算 avg')) passed = /\bavg\s*\(/i.test(sql)
+      if (item.includes('date_part')) passed = /date_part\s*\(/i.test(sql) && /'year'|"year"/i.test(sql)
+      if (item.includes('integer') || item.includes('型別轉換')) passed = /::\s*integer\b/i.test(sql) || /cast\s*\([\s\S]*?\bas\s+integer\s*\)/i.test(sql)
+      if (item.includes('birth_year')) passed = /\bas\s+birth_year\b/i.test(sql)
+      if (item.includes('資料來源')) {
+        const table = item.match(/\b(student|enroll|course)\b/)?.[1]
+        if (table) passed = new RegExp('\\bfrom\\s+' + table + '\\b', 'i').test(sql) || passed === true
+      }
+      return { text, passed: Boolean(passed) }
+    })
+    const score = sql ? Math.round(checklistStatus.filter((item) => item.passed).length / Math.max(checklistStatus.length, 1) * 100) : 0
+    const passed = score >= 60
+    return {
+      success: true,
+      passed,
+      score,
+      summary: sql ? (passed ? '你已完成大部分查詢要求。' : '還有幾個查詢條件需要補上。') : '目前沒有 SQL 程式碼。',
+      feedback: '這是前端語法要點檢查，沒有連接資料庫執行查詢。',
+      errors: checklistStatus.filter((item) => !item.passed).map((item) => ({ panel: 'sql', message: '尚未符合「' + item.text + '」', suggestion: '對照題目條件檢查 SQL 子句與欄位關聯。' })),
+      checklistStatus,
+    }
+  }
   const checklist: string[] = Array.isArray(data.checklist) ? data.checklist : []
   const starter = data.starterCode || { html: '', css: '', js: '' }
   const stu = data.studentCode || { html: '', css: '', js: '' }

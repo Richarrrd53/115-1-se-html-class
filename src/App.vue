@@ -9,8 +9,13 @@ import MathCurveLoader from './components/MathCurveLoader.vue'
 import VsCodeEditor from './components/VsCodeEditor.vue'
 import ContactChat from './components/ContactChat.vue'
 import AnnouncementMorphModal from './components/AnnouncementMorphModal.vue'
+import SqlReview from './components/SqlReview.vue'
 
 const baseUrl = import.meta.env.BASE_URL
+const activeCourseView = ref<'html' | 'sql'>('html')
+watch(activeCourseView, (view) => {
+  document.body.classList.toggle('sql-page', view === 'sql')
+}, { immediate: true })
 const contentRef = ref<HTMLElement | null>(null)
 const isChatDrawerActive = ref(false)
 
@@ -115,6 +120,11 @@ const showServerBusyHint = ref(false)
 let serverBusyTimer: ReturnType<typeof setTimeout> | null = null
 const aiQueueMessage = ref('')
 const aiResult = ref<AiVerificationResult | null>(null)
+type WebEditorError = Extract<AiVerificationResult['errors'][number], { panel: 'html' | 'css' | 'js' }>
+function isWebEditorError(error: AiVerificationResult['errors'][number]): error is WebEditorError {
+  return error.panel !== 'sql'
+}
+const htmlEditorErrors = computed(() => aiResult.value?.errors.filter(isWebEditorError) ?? [])
 let verificationToken = 0
 
 // AI 驗證多步驟狀態機
@@ -1125,7 +1135,6 @@ ${raw}
         <div class="progress-track"><i :style="{ width: `${progress}%` }"></i></div>
         <b>{{ progress }}%</b>
       </div>
-      <AnnouncementMorphModal :student-id="studentId" />
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">
         <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -1133,7 +1142,7 @@ ${raw}
         </svg>
         回到總覽
       </button>
-      <a :href="`${baseUrl}edit.html`" class="edit-nav-button" title="開啟管理員控制台（成績與教材管理）">
+      <a :href="baseUrl + 'edit.html'" class="edit-nav-button" title="開啟管理員控制台（成績與教材管理）">
         <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"></circle>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -1142,7 +1151,14 @@ ${raw}
       </a>
     </header>
 
-    <div class="workspace">
+    <SqlReview
+      v-if="activeCourseView === 'sql'"
+      :student-id="studentId"
+      :student-name="studentName"
+      :practice-students="practiceStudents"
+      @request-profile="showStudentProfileModal = true"
+    />
+    <div v-if="activeCourseView === 'html'" class="workspace">
       <aside class="sidebar" id="dash-sidebar" :class="{ 'shifted-left': isChatDrawerActive }">
         <div class="side-header">
           <div class="side-logo brand-logo">
@@ -1290,7 +1306,6 @@ ${raw}
               v-model="code"
               v-model:active-panel="activePanel"
               :errors="aiResult?.errors || []"
-              :custom-completions="lesson.practice?.customCompletions"
             />
             <div class="preview-panel">
               <div class="preview-toolbar"><span><i></i> 即時預覽</span><small>輸入程式碼後會立即更新</small></div>
