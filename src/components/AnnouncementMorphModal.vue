@@ -121,6 +121,7 @@ interface MorphSession {
 }
 
 let activeMorphSession: MorphSession | null = null
+let cleanupTimer: ReturnType<typeof setTimeout> | null = null
 const isModalOpen = ref(false)
 
 function formatDate(iso: string) {
@@ -149,6 +150,11 @@ function handleMarkAllAsRead() {
 }
 
 function closeMorphModal(onComplete?: () => void) {
+  if (cleanupTimer) {
+    clearTimeout(cleanupTimer)
+    cleanupTimer = null
+  }
+
   if (!activeMorphSession) {
     isModalOpen.value = false
     if (onComplete) onComplete()
@@ -322,23 +328,53 @@ function closeMorphModal(onComplete?: () => void) {
       return
     }
 
-    // 精確對齊原按鈕絕對座標與尺寸 (消除任何微米級四捨五入誤差)
+    // 1. 動畫完成：精確鎖定原按鈕絕對座標與尺寸 (消除任何微米級四捨五入誤差)
     menu.style.left = `${liveRect.left}px`
     menu.style.top = `${liveRect.top}px`
     menu.style.width = `${liveRect.width}px`
     menu.style.height = `${liveRect.height}px`
     menu.style.borderRadius = `${liveRect.height / 2}px`
     menu.style.transform = 'none'
+    menu.style.opacity = '1'
+    menu.style.filter = 'none'
+    morphIcon.style.opacity = '1'
+    morphIcon.style.filter = 'none'
+    morphIcon.style.transform = 'scale(1)'
+    if (morphBadge && unreadAnnouncementsCount.value > 0) {
+      morphBadge.style.opacity = '1'
+      morphBadge.style.transform = 'scale(1)'
+    }
 
-    // 動畫結束：同幀零誤差無縫交接，徹底消除閃爍！
+    // 2. 解除原按鈕隱藏（無 transition 即時就地顯示，與形變物件 100% 重合）
     if (triggerBtn) {
+      triggerBtn.style.setProperty('transition', 'none', 'important')
+      triggerBtn.style.setProperty('opacity', '1', 'important')
+      triggerBtn.style.setProperty('visibility', 'visible', 'important')
       triggerBtn.classList.remove('is-hidden-for-morph')
       triggerBtn.blur()
+      void triggerBtn.offsetHeight
+      requestAnimationFrame(() => {
+        if (triggerBtn) {
+          triggerBtn.style.removeProperty('opacity')
+          triggerBtn.style.removeProperty('visibility')
+          triggerBtn.style.removeProperty('transition')
+        }
+      })
     }
-    if (overlay && overlay.parentNode) {
-      overlay.parentNode.removeChild(overlay)
-    }
-    if (onComplete) onComplete()
+
+    // 3. 避免穿幫：模擬形變的物件在收合後延遲一段時間再消失！
+    // 期間將 overlay 設為非交互 (pointer-events: none)，使原按鈕立即具備點擊與 hover 能力
+    overlay.style.pointerEvents = 'none'
+    menu.style.pointerEvents = 'none'
+
+    // 延遲 140ms 後再安全移除模擬形變節點，給予重疊繪製充足時間，徹底消除穿幫閃爍
+    cleanupTimer = setTimeout(() => {
+      if (overlay && overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay)
+      }
+      cleanupTimer = null
+      if (onComplete) onComplete()
+    }, 140)
   }
 
   session.rafId = requestAnimationFrame(stepClose)
@@ -350,6 +386,14 @@ function openMorphModal() {
 
   // 關閉泡泡提示
   handleDismissBubble()
+
+  // 若前次收合延遲計時器仍在運行，立即清除並清理舊節點
+  if (cleanupTimer) {
+    clearTimeout(cleanupTimer)
+    cleanupTimer = null
+    const oldOverlays = document.querySelectorAll('.announcement-morph-overlay')
+    oldOverlays.forEach(el => el.parentNode?.removeChild(el))
+  }
 
   if (activeMorphSession) {
     closeMorphModal(() => {
@@ -363,6 +407,13 @@ function openMorphModal() {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2,
   }
+
+  // 立即隱藏原按鈕本體，杜絕任何 transition 緩慢消失導致的展開殘影
+  triggerBtn.classList.add('is-hidden-for-morph')
+  triggerBtn.style.setProperty('opacity', '0', 'important')
+  triggerBtn.style.setProperty('visibility', 'hidden', 'important')
+  triggerBtn.style.setProperty('transition', 'none', 'important')
+  void triggerBtn.offsetHeight // 強制同幀同步生效！
 
   // 建立全域 Fixed Overlay
   const overlay = document.createElement('div')
@@ -698,6 +749,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeydown)
+  if (cleanupTimer) {
+    clearTimeout(cleanupTimer)
+    cleanupTimer = null
+  }
   if (activeMorphSession) {
     if (activeMorphSession.rafId) cancelAnimationFrame(activeMorphSession.rafId)
     if (activeMorphSession.overlay && activeMorphSession.overlay.parentNode) {
@@ -1115,6 +1170,7 @@ onUnmounted(() => {
   opacity: 0 !important;
   visibility: hidden !important;
   transition: none !important;
+  transition-property: none !important;
   pointer-events: none !important;
 }
 </style>
@@ -1130,7 +1186,7 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-/* 原始 36px 圓形按鈕：維持原本的白色背景、圓角邊框與陰影 */
+/* 原始 36px 圓形按鈕：維持原本的白色背景、圓角邊框與陰影，不縮放避免穿幫 */
 .announcement-trigger-btn {
   position: relative;
   width: 36px;
@@ -1149,23 +1205,23 @@ onUnmounted(() => {
   padding: 0;
   box-sizing: border-box;
   outline: none;
+  transform: none !important;
   transition: background 0.18s var(--morph-ease),
               color 0.18s var(--morph-ease),
               border-color 0.18s var(--morph-ease),
-              box-shadow 0.18s var(--morph-ease),
-              transform 0.18s var(--morph-ease);
+              box-shadow 0.18s var(--morph-ease) !important;
 }
 
 .announcement-trigger-btn:hover {
   background: var(--slate-50, #f8fafc);
   color: #2563eb;
   border-color: #93c5fd;
-  transform: scale(1.06);
-  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.12);
+  transform: none !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.1);
 }
 
 .announcement-trigger-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.96) !important;
 }
 
 /* 圖標本身背景透明，無額外底色 */

@@ -9,6 +9,7 @@ import MathCurveLoader from './components/MathCurveLoader.vue'
 import VsCodeEditor from './components/VsCodeEditor.vue'
 import ContactChat from './components/ContactChat.vue'
 import SqlReview from './components/SqlReview.vue'
+import AnnouncementMorphModal from './components/AnnouncementMorphModal.vue'
 
 const baseUrl = import.meta.env.BASE_URL
 const activeCourseView = ref<'html' | 'sql'>('html')
@@ -1136,7 +1137,8 @@ ${raw}
           :class="{ active: activeCourseView === 'html' }"
           @click="activeCourseView = 'html'"
         >
-          HTML 練習
+          <span>HTML 練習</span>
+          <div class='btn-glow'></div>
         </button>
         <button
           type="button"
@@ -1144,9 +1146,11 @@ ${raw}
           :class="{ active: activeCourseView === 'sql' }"
           @click="activeCourseView = 'sql'"
         >
-          SQL 練習
+          <span>SQL 練習</span>
+          <div class='btn-glow'></div>
         </button>
       </div>
+      <AnnouncementMorphModal :student-id="studentId" />
       <button class="ghost-button" @click="chooseLesson(lessons[0].id)">
         <svg class="btn-svg" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
