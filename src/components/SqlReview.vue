@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { verifySqlPracticeWithAI, type AiVerificationResult } from '../aiService'
 import { sqlLessons as units, syncSqlCourseDataFromDatabase } from '../sqlCourseStore'
+import { DynamicMaskSystem } from '../utils/dynamicMask'
 
 const props = defineProps<{ studentId: string; studentName: string; practiceStudents: string[] }>()
 const emit = defineEmits<{ requestProfile: [] }>()
@@ -11,6 +12,9 @@ const sqlDraft = ref(activeUnit.value.starter)
 const isChecking = ref(false)
 const result = ref<AiVerificationResult | null>(null)
 const errorMessage = ref('')
+const contentRef = ref<HTMLElement | null>(null)
+const lessonContainerRef = ref<HTMLElement | null>(null)
+const sideBodyRef = ref<HTMLElement | null>(null)
 const savedSqlProgress = (() => {
   try {
     return {
@@ -30,12 +34,32 @@ const completedExerciseCount = computed(() =>
 
 onMounted(() => {
   void syncSqlCourseDataFromDatabase()
+  if (sideBodyRef.value) {
+    DynamicMaskSystem.attach(sideBodyRef.value, { maskSize: 36, direction: 'vertical' })
+  }
+  if (lessonContainerRef.value) {
+    DynamicMaskSystem.attach(lessonContainerRef.value, { maskSize: 36, direction: 'vertical' })
+  }
 })
 
-watch(activeUnit, (unit) => {
+onUnmounted(() => {
+  if (sideBodyRef.value) DynamicMaskSystem.detach(sideBodyRef.value)
+  if (lessonContainerRef.value) DynamicMaskSystem.detach(lessonContainerRef.value)
+  if (contentRef.value) DynamicMaskSystem.detach(contentRef.value)
+})
+
+watch(activeUnit, async (unit) => {
   sqlDraft.value = unit.starter
   result.value = null
   errorMessage.value = ''
+  await nextTick()
+  if (lessonContainerRef.value) {
+    lessonContainerRef.value.scrollTop = 0
+    DynamicMaskSystem.get(lessonContainerRef.value)?.scheduleUpdate()
+  }
+  if (sideBodyRef.value) {
+    DynamicMaskSystem.get(sideBodyRef.value)?.scheduleUpdate()
+  }
 })
 
 async function checkAnswer() {
@@ -90,7 +114,7 @@ async function checkAnswer() {
         </div>
         <span class="side-progress-badge" title="已完成 SQL 練習">{{ completedExerciseCount }}/{{ exerciseCount }}</span>
       </div>
-      <nav class="side-body" aria-label="SQL 複習單元">
+      <nav class="side-body" ref="sideBodyRef" data-dynamic-mask data-mask-direction="vertical" data-mask-size="36" aria-label="SQL 複習單元">
         <button
           v-for="(unit, index) in units"
           :key="unit.id"
@@ -138,8 +162,16 @@ async function checkAnswer() {
       </div>
     </aside>
 
-    <main class="content sql-content">
-      <div class="breadcrumb">SQL 複習 <span>/</span> 單元 {{ units.findIndex((unit) => unit.id === activeUnitId) + 1 }}</div>
+    <main class="content sql-content" ref="contentRef">
+      <div
+        class="lesson-view-container sql-view-container"
+        ref="lessonContainerRef"
+        v-dynamic-mask="{ maskSize: 36, direction: 'vertical' }"
+        data-dynamic-mask
+        data-mask-direction="vertical"
+        data-mask-size="36"
+      >
+        <div class="breadcrumb">SQL 複習 <span>/</span> 單元 {{ units.findIndex((unit) => unit.id === activeUnitId) + 1 }}</div>
       <section class="lesson-heading sql-lesson-heading">
         <div>
           <div class="eyebrow">CHAPTER {{ String(units.findIndex((unit) => unit.id === activeUnitId) + 1).padStart(2, '0') }} · POSTGRESQL</div>
@@ -199,6 +231,7 @@ async function checkAnswer() {
           </button>
         </div>
       </section>
+      </div>
     </main>
   </div>
 </template>

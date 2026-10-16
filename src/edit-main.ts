@@ -1,5 +1,8 @@
 import { createApp } from 'vue'
 import './style.css'
 import EditApp from './EditApp.vue'
+import { vDynamicMask } from './utils/dynamicMask'
 
-createApp(EditApp).mount('#edit-app')
+const app = createApp(EditApp)
+app.directive('dynamic-mask', vDynamicMask)
+app.mount('#edit-app')

@@ -10,6 +10,7 @@ import VsCodeEditor from './components/VsCodeEditor.vue'
 import ContactChat from './components/ContactChat.vue'
 import SqlReview from './components/SqlReview.vue'
 import AnnouncementMorphModal from './components/AnnouncementMorphModal.vue'
+import { DynamicMaskSystem } from './utils/dynamicMask'
 
 const baseUrl = import.meta.env.BASE_URL
 const activeCourseView = ref<'html' | 'sql'>('html')
@@ -17,14 +18,20 @@ watch(activeCourseView, (view) => {
   document.body.classList.toggle('sql-page', view === 'sql')
 }, { immediate: true })
 const contentRef = ref<HTMLElement | null>(null)
+const lessonContainerRef = ref<HTMLElement | null>(null)
+const sideBodyRef = ref<HTMLElement | null>(null)
 const isChatDrawerActive = ref(false)
 
 function scrollContentToTop() {
+  if (lessonContainerRef.value) {
+    lessonContainerRef.value.style.scrollBehavior = "smooth"
+    lessonContainerRef.value.scrollTo(0, 0)
+    lessonContainerRef.value.scrollTop = 0
+    lessonContainerRef.value.scrollLeft = 0
+    DynamicMaskSystem.get(lessonContainerRef.value)?.scheduleUpdate()
+  }
   if (contentRef.value) {
-    contentRef.value.style.scrollBehavior = "smooth"
-    contentRef.value.scrollTo(0, 0)
     contentRef.value.scrollTop = 0
-    contentRef.value.scrollLeft = 0
   }
 }
 
@@ -449,9 +456,13 @@ const expandedStages = ref<Record<number, boolean>>({
   5: true,
 })
 
-function toggleStage(stageId: number | string) {
+async function toggleStage(stageId: number | string) {
   const numericId = Number(stageId)
   expandedStages.value[numericId] = !expandedStages.value[numericId]
+  await nextTick()
+  if (sideBodyRef.value) {
+    DynamicMaskSystem.get(sideBodyRef.value)?.scheduleUpdate()
+  }
 }
 
 watch(
@@ -980,9 +991,20 @@ onMounted(() => {
 
   refreshPracticeStudents()
   loadCurrentLessonSubmissions()
+
+  // 掛載 Dynamic Gradient Mask System
+  if (sideBodyRef.value) {
+    DynamicMaskSystem.attach(sideBodyRef.value, { maskSize: 36, direction: 'vertical' })
+  }
+  if (lessonContainerRef.value) {
+    DynamicMaskSystem.attach(lessonContainerRef.value, { maskSize: 36, direction: 'vertical' })
+  }
 })
 
 onUnmounted(() => {
+  if (sideBodyRef.value) DynamicMaskSystem.detach(sideBodyRef.value)
+  if (lessonContainerRef.value) DynamicMaskSystem.detach(lessonContainerRef.value)
+  if (contentRef.value) DynamicMaskSystem.detach(contentRef.value)
   window.removeEventListener('message', handleWindowMessage)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', updateHistoryModalScroll)
@@ -1184,7 +1206,7 @@ ${raw}
           <span class="side-progress-badge" title="完成進度">{{ completedCount }}/{{ lessons.length }}</span>
         </div>
 
-        <nav class="side-body">
+        <nav class="side-body" ref="sideBodyRef" data-dynamic-mask data-mask-direction="vertical" data-mask-size="36">
           <div
             v-for="stage in stages"
             :key="stage.id"
@@ -1259,7 +1281,15 @@ ${raw}
 
       <main class="content" ref="contentRef">
         <transition name="lesson-glide" mode="out-in" @before-enter="scrollContentToTop">
-          <div :key="lesson.id" class="lesson-view-container">
+          <div
+            :key="lesson.id"
+            ref="lessonContainerRef"
+            class="lesson-view-container"
+            v-dynamic-mask="{ maskSize: 36, direction: 'vertical' }"
+            data-dynamic-mask
+            data-mask-direction="vertical"
+            data-mask-size="36"
+          >
             <div class="breadcrumb">課程地圖 <span>/</span> {{ stages.find((item) => item.id === lesson.stage)?.title }} <span>/</span> 單元 {{ lesson.number }}</div>
             <section class="lesson-heading">
               <div>
