@@ -52,7 +52,7 @@ ensureGcpCredentials()
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'project-ab68aaa2-ad0c-4e95-973'
 const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
-const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 
 const ai = new GoogleGenAI({
   vertexai: true,
@@ -296,6 +296,7 @@ JSON 格式規範：
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
+        thinkingConfig: { thinkingLevel: 'MEDIUM' },
       },
     })
     responseText = res.text || ''

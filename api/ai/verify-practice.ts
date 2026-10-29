@@ -43,7 +43,7 @@ function ensureGcpCredentials() {
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID || 'project-ab68aaa2-ad0c-4e95-973'
 const location = process.env.GOOGLE_CLOUD_LOCATION || 'us-central1'
-const modelName = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const modelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 
 function getGoogleGenAI(): GoogleGenAI | null {
   ensureGcpCredentials()
@@ -288,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prompt = buildPrompt(body)
       let responseText = ''
       try {
-        const r = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: 'application/json' } })
+        const r = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'MEDIUM' } } })
         responseText = r.text || ''
       } catch {
         const r2 = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { responseMimeType: 'application/json' } })
