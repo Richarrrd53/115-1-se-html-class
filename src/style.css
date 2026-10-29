@@ -661,6 +661,22 @@ pre code {
   box-sizing: border-box !important;
 }
 
+/* SQL 練習需要隨內容延伸，避免編輯區被視窗高度壓縮。 */
+.content.sql-content {
+  max-height: none;
+  min-height: calc(100vh - 70px);
+  overflow: visible !important;
+  padding: 40px clamp(20px, 4vw, 56px) 80px !important;
+  display: block !important;
+}
+
+.sql-content .sql-view-container {
+  height: auto;
+  min-height: calc(100vh - 150px);
+  padding: 0;
+  overflow: visible !important;
+}
+
 .sql-unit-link {
   width: 100%;
   text-align: left;
