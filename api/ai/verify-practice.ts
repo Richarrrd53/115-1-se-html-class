@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -288,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prompt = buildPrompt(body)
       let responseText = ''
       try {
-        const r = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: 'MEDIUM' } } })
+        const r = await ai.models.generateContent({ model: modelName, contents: prompt, config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM } } })
         responseText = r.text || ''
       } catch {
         const r2 = await ai.models.generateContent({ model: 'gemini-2.0-flash', contents: prompt, config: { responseMimeType: 'application/json' } })

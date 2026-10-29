@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -296,7 +296,7 @@ JSON 格式規範：
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        thinkingConfig: { thinkingLevel: 'MEDIUM' },
+        thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
       },
     })
     responseText = res.text || ''
